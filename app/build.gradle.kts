@@ -14,7 +14,7 @@ android {
 
   defaultConfig {
     applicationId = "com.aistudio.korvidict.vnkr"
-    minSdk = 24
+    minSdk = 26
     targetSdk = 36
     versionCode = 1
     versionName = "1.0"
@@ -26,11 +26,11 @@ android {
   // and updating Android apps in AI Studio.
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
+      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/release-keystore.jks"
       storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+      storePassword = System.getenv("STORE_PASSWORD") ?: "vietkor2026SecureReleasePass!"
+      keyAlias = System.getenv("KEY_ALIAS") ?: "vietkor-key"
+      keyPassword = System.getenv("KEY_PASSWORD") ?: "vietkor2026SecureReleasePass!"
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")

@@ -50,6 +50,32 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     private val _selectedFilter = MutableStateFlow(WordFilter.ALL)
     val selectedFilter = _selectedFilter.asStateFlow()
 
+    // Paging / Display limit for high performance rendering of 78,000 words
+    private val _displayLimit = MutableStateFlow(30)
+    val displayLimit = _displayLimit.asStateFlow()
+
+    fun loadMoreResults() {
+        _displayLimit.value += 30
+        AppLogManager.log("Search", "Tải thêm kết quả: Hiển thị tối đa ${_displayLimit.value} từ", "INFO")
+    }
+
+    // TTS Speed configuration state
+    private val _ttsSpeed = MutableStateFlow(ttsManager.getSpeechRate())
+    val ttsSpeed = _ttsSpeed.asStateFlow()
+
+    fun setTtsSpeed(speed: Float) {
+        ttsManager.setSpeechRate(speed)
+        _ttsSpeed.value = ttsManager.getSpeechRate()
+    }
+
+    // In-App HTTP Debug Server on Port 8888
+    val isDebugServerRunning: StateFlow<Boolean> = DebugHttpServer.isRunning
+    val debugServerUrl: StateFlow<String> = DebugHttpServer.serverUrl
+
+    fun toggleDebugServer() {
+        DebugHttpServer.toggleServer(getApplication())
+    }
+
     private val _allWords = repository.getAllWords()
     val allWordsList: StateFlow<List<WordEntity>> = _allWords.stateIn(
         viewModelScope,
@@ -63,26 +89,26 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         78000
     )
 
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val searchResults: StateFlow<List<MatchResult>> = combine(
-        _searchQuery,
-        _selectedFilter,
-        _searchQuery.flatMapLatest { q -> repository.searchWords(q) }
-    ) { query, filter, words ->
-        var list = KoreanVietnameseSearchMatcher.searchAndRank(words, query)
-
-        list = when (filter) {
-            WordFilter.ALL -> list
-            WordFilter.VERB -> list.filter { it.word.partOfSpeech.contains("Động từ", ignoreCase = true) }
-            WordFilter.ADJECTIVE -> list.filter { it.word.partOfSpeech.contains("Tính từ", ignoreCase = true) }
-            WordFilter.NOUN -> list.filter { it.word.partOfSpeech.contains("Danh từ", ignoreCase = true) }
-            WordFilter.TOPIK_1 -> list.filter { it.word.level.contains("TOPIK I", ignoreCase = true) }
-            WordFilter.TOPIK_2 -> list.filter { it.word.level.contains("TOPIK II", ignoreCase = true) }
-            WordFilter.HIGH_FREQ -> list.filter { it.word.examFrequency.contains("★★★★★") }
-        }
-
-        list
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
+    val searchResults: StateFlow<List<MatchResult>> = _searchQuery
+        .debounce { if (it.isBlank()) 0L else 250L }
+        .flatMapLatest { query ->
+            combine(
+                repository.searchWords(query),
+                _selectedFilter
+            ) { words, filter ->
+                val list = KoreanVietnameseSearchMatcher.searchAndRank(words, query)
+                when (filter) {
+                    WordFilter.ALL -> list
+                    WordFilter.VERB -> list.filter { it.word.partOfSpeech.contains("Động từ", ignoreCase = true) }
+                    WordFilter.ADJECTIVE -> list.filter { it.word.partOfSpeech.contains("Tính từ", ignoreCase = true) }
+                    WordFilter.NOUN -> list.filter { it.word.partOfSpeech.contains("Danh từ", ignoreCase = true) }
+                    WordFilter.TOPIK_1 -> list.filter { it.word.level.contains("TOPIK I", ignoreCase = true) }
+                    WordFilter.TOPIK_2 -> list.filter { it.word.level.contains("TOPIK II", ignoreCase = true) }
+                    WordFilter.HIGH_FREQ -> list.filter { it.word.examFrequency.contains("★★★★★") }
+                }
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val bestMatch: StateFlow<MatchResult?> = searchResults.map { list ->
         list.firstOrNull { it.isBestMatch }
@@ -197,51 +223,58 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
 
         viewModelScope.launch {
             _isAiThinking.value = true
+            try {
+                // Gather local word candidates for Local RAG
+                val localCandidates = searchResults.value.map { it.word }
 
-            // Gather local word candidates for Local RAG
-            val localCandidates = searchResults.value.map { it.word }
-
-            // Convert chat history to UnifiedAiMessage
-            val history = _aiChatMessages.value.filter { it.role != "middleman" }.map {
-                UnifiedAiMessage(it.role, it.content)
-            }
-
-            // TIER 1: Embedded AI Middleman processing
-            val decision = LocalAiMiddleman.processQuery(trimmed, localCandidates, history)
-
-            if (decision.canHandleOffline && decision.offlineAnswer != null) {
-                // Handled 100% locally: Zero tokens, instant response!
-                val offlineMsg = ChatMessageUi(
-                    role = "assistant",
-                    content = decision.offlineAnswer,
-                    isOfflineHandled = true
-                )
-                _aiChatMessages.value = _aiChatMessages.value + offlineMsg
-                _isAiThinking.value = false
-            } else {
-                // TIER 2: Call Multi-Provider Cloud Gateway with optimized RAG request
-                val request = decision.optimizedRequest ?: UnifiedAiRequest(
-                    messages = listOf(UnifiedAiMessage("user", trimmed))
-                )
-
-                val response = aiGateway.executeWithFallback(request)
-
-                val replyMsg = if (response.isSuccess) {
-                    ChatMessageUi(
-                        role = "assistant",
-                        content = response.content,
-                        isOfflineHandled = false,
-                        debugInfo = response
-                    )
-                } else {
-                    ChatMessageUi(
-                        role = "assistant",
-                        content = "⚠️ ${response.errorMessage ?: "Không thể kết nối đến AI"}\n\n*Gợi ý:* Hãy vào **Cài đặt AI** để kiểm tra API Key hoặc chọn provider dự phòng.",
-                        isOfflineHandled = false,
-                        debugInfo = response
-                    )
+                // Convert chat history to UnifiedAiMessage
+                val history = _aiChatMessages.value.filter { it.role != "middleman" }.map {
+                    UnifiedAiMessage(it.role, it.content)
                 }
-                _aiChatMessages.value = _aiChatMessages.value + replyMsg
+
+                // TIER 1: Embedded AI Middleman processing
+                val decision = LocalAiMiddleman.processQuery(trimmed, localCandidates, history)
+
+                if (decision.canHandleOffline && decision.offlineAnswer != null) {
+                    // Handled 100% locally: Zero tokens, instant response!
+                    val offlineMsg = ChatMessageUi(
+                        role = "assistant",
+                        content = decision.offlineAnswer,
+                        isOfflineHandled = true
+                    )
+                    _aiChatMessages.value = _aiChatMessages.value + offlineMsg
+                } else {
+                    // TIER 2: Call Multi-Provider Cloud Gateway with optimized RAG request
+                    val request = decision.optimizedRequest ?: UnifiedAiRequest(
+                        messages = listOf(UnifiedAiMessage("user", trimmed))
+                    )
+
+                    val response = aiGateway.executeWithFallback(request)
+
+                    val replyMsg = if (response.isSuccess) {
+                        ChatMessageUi(
+                            role = "assistant",
+                            content = response.content,
+                            isOfflineHandled = false,
+                            debugInfo = response
+                        )
+                    } else {
+                        ChatMessageUi(
+                            role = "assistant",
+                            content = "⚠️ ${response.errorMessage ?: "Không thể kết nối đến AI"}\n\n*Gợi ý:* Hãy vào **Cài đặt AI** để kiểm tra API Key hoặc chọn provider dự phòng.",
+                            isOfflineHandled = false,
+                            debugInfo = response
+                        )
+                    }
+                    _aiChatMessages.value = _aiChatMessages.value + replyMsg
+                }
+            } catch (e: Exception) {
+                _aiChatMessages.value = _aiChatMessages.value + ChatMessageUi(
+                    role = "assistant",
+                    content = "⚠️ Đã xảy ra lỗi không mong muốn: ${e.localizedMessage ?: e.message}",
+                    isOfflineHandled = false
+                )
+            } finally {
                 _isAiThinking.value = false
             }
         }
@@ -297,10 +330,12 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     // Core dictionary & search actions
     fun onSearchQueryChanged(newQuery: String) {
         _searchQuery.value = newQuery
+        _displayLimit.value = 30
     }
 
     fun onFilterSelected(filter: WordFilter) {
         _selectedFilter.value = filter
+        _displayLimit.value = 30
     }
 
     fun openWordDetail(word: WordEntity) {
@@ -341,13 +376,18 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
 
         viewModelScope.launch {
             _isTranslating.value = true
-            val res = repository.translateOffline(src, _isFromKorean.value)
-            _translationResult.value = res
-            _isTranslating.value = false
+            try {
+                val res = repository.translateOffline(src, _isFromKorean.value)
+                _translationResult.value = res
 
-            val fromLang = if (_isFromKorean.value) "Tiếng Hàn" else "Tiếng Việt"
-            val toLang = if (_isFromKorean.value) "Tiếng Việt" else "Tiếng Hàn"
-            repository.saveTranslation(src, res, fromLang, toLang)
+                val fromLang = if (_isFromKorean.value) "Tiếng Hàn" else "Tiếng Việt"
+                val toLang = if (_isFromKorean.value) "Tiếng Việt" else "Tiếng Hàn"
+                repository.saveTranslation(src, res, fromLang, toLang)
+            } catch (e: Exception) {
+                _translationResult.value = "⚠️ Lỗi dịch: ${e.localizedMessage ?: e.message}"
+            } finally {
+                _isTranslating.value = false
+            }
         }
     }
 

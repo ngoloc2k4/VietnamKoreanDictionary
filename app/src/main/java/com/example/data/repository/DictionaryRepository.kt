@@ -14,6 +14,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class DictionaryRepository(context: Context) {
+    companion object {
+        private val WHITESPACE_REGEX = Regex("\\s+")
+        private val PUNCTUATION_REGEX = Regex("[,.!?~]")
+    }
+
     private val db = AppDatabase.getDatabase(context)
     private val wordDao = db.wordDao()
     private val searchHistoryDao = db.searchHistoryDao()
@@ -109,44 +114,45 @@ class DictionaryRepository(context: Context) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return@withContext ""
 
-        val allWords = wordDao.getAllWords().first()
-
         // 1. Exact match check
         if (fromKorean) {
-            val direct = allWords.firstOrNull { 
-                it.korean.equals(trimmed, ignoreCase = true) ||
-                it.rootForm.equals(trimmed, ignoreCase = true) ||
-                it.presentTense.contains(trimmed) ||
-                it.pastTense.contains(trimmed) ||
-                it.politeLife.equals(trimmed)
-            }
+            val direct = wordDao.getWordByKorean(trimmed)
+                ?: wordDao.searchWords(trimmed).first().firstOrNull {
+                    it.korean.equals(trimmed, ignoreCase = true) ||
+                    it.rootForm.equals(trimmed, ignoreCase = true) ||
+                    it.presentTense.contains(trimmed) ||
+                    it.pastTense.contains(trimmed) ||
+                    it.politeLife.equals(trimmed)
+                }
             if (direct != null) {
                 return@withContext direct.vietnamese + " (" + direct.pronunciation + ")"
             }
         } else {
-            val direct = allWords.firstOrNull {
-                it.vietnamese.contains(trimmed, ignoreCase = true) ||
-                it.hanViet.contains(trimmed, ignoreCase = true)
-            }
+            val direct = wordDao.findFirstMatchingVietnamese(trimmed)
+                ?: wordDao.searchWords(trimmed).first().firstOrNull {
+                    it.vietnamese.contains(trimmed, ignoreCase = true) ||
+                    it.hanViet.contains(trimmed, ignoreCase = true)
+                }
             if (direct != null) {
                 return@withContext direct.korean + " (" + direct.pronunciation + " - " + direct.vietnamese + ")"
             }
         }
 
         // 2. Tokenized & Phrase mapping
-        val tokens = trimmed.split(Regex("\\s+"))
+        val tokens = trimmed.split(WHITESPACE_REGEX)
         val translatedParts = mutableListOf<String>()
 
         if (fromKorean) {
             for (token in tokens) {
                 // Strip punctuation
-                val clean = token.replace(Regex("[,.!?~]"), "")
-                val found = allWords.firstOrNull { 
-                    it.korean == clean ||
-                    clean.startsWith(it.korean.removeSuffix("다")) ||
-                    it.presentTense.contains(clean) ||
-                    it.pastTense.contains(clean)
-                }
+                val clean = token.replace(PUNCTUATION_REGEX, "")
+                val found = wordDao.getWordByKorean(clean)
+                    ?: wordDao.searchWords(clean).first().firstOrNull {
+                        it.korean == clean ||
+                        clean.startsWith(it.korean.removeSuffix("다")) ||
+                        it.presentTense.contains(clean) ||
+                        it.pastTense.contains(clean)
+                    }
                 if (found != null) {
                     val primaryMeaning = found.vietnamese.split(",")[0].trim()
                     translatedParts.add(primaryMeaning)
@@ -173,10 +179,11 @@ class DictionaryRepository(context: Context) {
             return@withContext translatedParts.joinToString(" ")
         } else {
             for (token in tokens) {
-                val clean = token.lowercase().replace(Regex("[,.!?~]"), "")
-                val found = allWords.firstOrNull {
-                    it.vietnamese.lowercase().contains(clean) || it.hanViet.lowercase() == clean
-                }
+                val clean = token.lowercase().replace(PUNCTUATION_REGEX, "")
+                val found = wordDao.findFirstMatchingVietnamese(clean)
+                    ?: wordDao.searchWords(clean).first().firstOrNull {
+                        it.vietnamese.lowercase().contains(clean) || it.hanViet.lowercase() == clean
+                    }
                 if (found != null) {
                     translatedParts.add(found.korean)
                 } else {

@@ -39,6 +39,8 @@ fun DictionaryScreen(
     val searchResults by viewModel.searchResults.collectAsState()
     val totalCount by viewModel.totalWordCount.collectAsState()
     val selectedWord by viewModel.selectedWord.collectAsState()
+    val displayLimit by viewModel.displayLimit.collectAsState()
+    var showTranslatorSheet by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -64,6 +66,17 @@ fun DictionaryScreen(
                     text = "Kho dữ liệu $totalCount+ từ vựng ngoại tuyến • Không dấu & 초성",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            IconButton(
+                onClick = { showTranslatorSheet = true },
+                modifier = Modifier.testTag("open_translator_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Translate,
+                    contentDescription = "Dịch câu nhanh",
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
         }
@@ -189,6 +202,9 @@ fun DictionaryScreen(
                 }
             }
         } else {
+            val displayedResults = searchResults.take(displayLimit)
+            val remainingCount = searchResults.size - displayLimit
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -196,7 +212,7 @@ fun DictionaryScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(bottom = 80.dp)
             ) {
-                items(searchResults, key = { it.word.id }) { matchResult ->
+                items(displayedResults, key = { it.word.id }) { matchResult ->
                     WordItemCard(
                         matchResult = matchResult,
                         isSearching = searchQuery.isNotBlank(),
@@ -204,6 +220,42 @@ fun DictionaryScreen(
                         onToggleFavorite = { viewModel.toggleFavorite(matchResult.word) },
                         onSpeak = { viewModel.speakKorean(matchResult.word.korean) }
                     )
+                }
+
+                if (remainingCount > 0) {
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { viewModel.loadMoreResults() }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ExpandMore,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Xem thêm kết quả (còn $remainingCount từ)...",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -218,6 +270,20 @@ fun DictionaryScreen(
             onSpeakKorean = { viewModel.speakKorean(it) },
             onSpeakVietnamese = { viewModel.speakVietnamese(it) }
         )
+    }
+
+    // Quick Sentence Translator Sheet
+    if (showTranslatorSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showTranslatorSheet = false },
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            TranslatorScreen(
+                viewModel = viewModel,
+                modifier = Modifier.fillMaxHeight(0.9f)
+            )
+        }
     }
 }
 

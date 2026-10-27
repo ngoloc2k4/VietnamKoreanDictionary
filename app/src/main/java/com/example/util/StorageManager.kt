@@ -26,8 +26,12 @@ object StorageManager {
         if (dbFile.exists()) {
             dbBytes += dbFile.length()
         }
-        val dbWal = File(dbFile.parentFile, "korvi_dictionary_db-wal")
-        if (dbWal.exists()) dbBytes += dbWal.length()
+        dbFile.parentFile?.let { parent ->
+            val dbWal = File(parent, "korvi_dictionary_db-wal")
+            if (dbWal.exists()) dbBytes += dbWal.length()
+            val dbShm = File(parent, "korvi_dictionary_db-shm")
+            if (dbShm.exists()) dbBytes += dbShm.length()
+        }
 
         // If not initialized yet, account for assets DB size (~19.4MB)
         if (dbBytes < 1024 * 1024) {

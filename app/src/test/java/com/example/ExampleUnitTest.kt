@@ -122,4 +122,20 @@ class ExampleUnitTest {
         assertEquals("https://api.anthropic.com/v1", ProviderProtocol.ANTHROPIC_COMPATIBLE.defaultBaseUrl)
         assertEquals("https://generativelanguage.googleapis.com/v1beta", ProviderProtocol.GEMINI.defaultBaseUrl)
     }
+
+    @Test
+    fun `app log manager records and clears logs safely`() {
+        com.example.util.AppLogManager.clear()
+        com.example.util.AppLogManager.log("TestTag", "Sample log message", "INFO")
+        com.example.util.AppLogManager.log("TestTag", "Error occurred", "ERROR")
+
+        val currentLogs = com.example.util.AppLogManager.getLogs()
+        assertTrue("Logs should contain at least 2 entries", currentLogs.size >= 2)
+        assertTrue(currentLogs.any { it.message.contains("Sample log message") })
+        assertTrue(currentLogs.any { it.level == "ERROR" })
+
+        com.example.util.AppLogManager.clear()
+        val afterClear = com.example.util.AppLogManager.getLogs()
+        assertTrue("Logs should be reset", afterClear.size <= 2)
+    }
 }

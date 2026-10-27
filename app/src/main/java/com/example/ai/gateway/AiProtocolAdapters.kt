@@ -66,48 +66,49 @@ class OpenAiProtocolAdapter(
         }
 
         try {
-            val response = client.newCall(requestBuilder.build()).execute()
-            val latency = System.currentTimeMillis() - startTime
-            val responseBody = response.body?.string().orEmpty()
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                val latency = System.currentTimeMillis() - startTime
+                val responseBody = response.body?.string().orEmpty()
 
-            if (!response.isSuccessful) {
-                val errorMsg = try {
-                    val errJson = JSONObject(responseBody)
-                    errJson.optJSONObject("error")?.optString("message") ?: responseBody
-                } catch (e: Exception) {
-                    responseBody.ifBlank { "HTTP Error ${response.code}: ${response.message}" }
+                if (!response.isSuccessful) {
+                    val errorMsg = try {
+                        val errJson = JSONObject(responseBody)
+                        errJson.optJSONObject("error")?.optString("message") ?: responseBody
+                    } catch (e: Exception) {
+                        responseBody.ifBlank { "HTTP Error ${response.code}: ${response.message}" }
+                    }
+                    return@withContext UnifiedAiResponse(
+                        content = "",
+                        latencyMs = latency,
+                        providerName = config.name,
+                        modelName = config.modelName,
+                        rawCurlCommand = rawCurl,
+                        isSuccess = false,
+                        errorMessage = "Lỗi [${response.code}]: $errorMsg"
+                    )
                 }
-                return@withContext UnifiedAiResponse(
-                    content = "",
+
+                val json = JSONObject(responseBody)
+                val choices = json.optJSONArray("choices")
+                val content = choices?.optJSONObject(0)?.optJSONObject("message")?.optString("content").orEmpty()
+
+                val usage = json.optJSONObject("usage")
+                val promptTokens = usage?.optInt("prompt_tokens") ?: 0
+                val completionTokens = usage?.optInt("completion_tokens") ?: 0
+                val totalTokens = usage?.optInt("total_tokens") ?: (promptTokens + completionTokens)
+
+                UnifiedAiResponse(
+                    content = content.trim(),
+                    promptTokens = promptTokens,
+                    completionTokens = completionTokens,
+                    totalTokens = totalTokens,
                     latencyMs = latency,
                     providerName = config.name,
                     modelName = config.modelName,
                     rawCurlCommand = rawCurl,
-                    isSuccess = false,
-                    errorMessage = "Lỗi [${response.code}]: $errorMsg"
+                    isSuccess = true
                 )
             }
-
-            val json = JSONObject(responseBody)
-            val choices = json.optJSONArray("choices")
-            val content = choices?.optJSONObject(0)?.optJSONObject("message")?.optString("content").orEmpty()
-
-            val usage = json.optJSONObject("usage")
-            val promptTokens = usage?.optInt("prompt_tokens") ?: 0
-            val completionTokens = usage?.optInt("completion_tokens") ?: 0
-            val totalTokens = usage?.optInt("total_tokens") ?: (promptTokens + completionTokens)
-
-            UnifiedAiResponse(
-                content = content.trim(),
-                promptTokens = promptTokens,
-                completionTokens = completionTokens,
-                totalTokens = totalTokens,
-                latencyMs = latency,
-                providerName = config.name,
-                modelName = config.modelName,
-                rawCurlCommand = rawCurl,
-                isSuccess = true
-            )
         } catch (e: Exception) {
             val latency = System.currentTimeMillis() - startTime
             UnifiedAiResponse(
@@ -181,41 +182,42 @@ class AnthropicProtocolAdapter(
             .build()
 
         try {
-            val response = client.newCall(request).execute()
-            val latency = System.currentTimeMillis() - startTime
-            val responseBody = response.body?.string().orEmpty()
+            client.newCall(request).execute().use { response ->
+                val latency = System.currentTimeMillis() - startTime
+                val responseBody = response.body?.string().orEmpty()
 
-            if (!response.isSuccessful) {
-                return@withContext UnifiedAiResponse(
-                    content = "",
+                if (!response.isSuccessful) {
+                    return@withContext UnifiedAiResponse(
+                        content = "",
+                        latencyMs = latency,
+                        providerName = config.name,
+                        modelName = config.modelName,
+                        rawCurlCommand = rawCurl,
+                        isSuccess = false,
+                        errorMessage = "Lỗi Claude [${response.code}]: $responseBody"
+                    )
+                }
+
+                val json = JSONObject(responseBody)
+                val contentArray = json.optJSONArray("content")
+                val content = contentArray?.optJSONObject(0)?.optString("text").orEmpty()
+
+                val usage = json.optJSONObject("usage")
+                val inputTokens = usage?.optInt("input_tokens") ?: 0
+                val outputTokens = usage?.optInt("output_tokens") ?: 0
+
+                UnifiedAiResponse(
+                    content = content.trim(),
+                    promptTokens = inputTokens,
+                    completionTokens = outputTokens,
+                    totalTokens = inputTokens + outputTokens,
                     latencyMs = latency,
                     providerName = config.name,
                     modelName = config.modelName,
                     rawCurlCommand = rawCurl,
-                    isSuccess = false,
-                    errorMessage = "Lỗi Claude [${response.code}]: $responseBody"
+                    isSuccess = true
                 )
             }
-
-            val json = JSONObject(responseBody)
-            val contentArray = json.optJSONArray("content")
-            val content = contentArray?.optJSONObject(0)?.optString("text").orEmpty()
-
-            val usage = json.optJSONObject("usage")
-            val inputTokens = usage?.optInt("input_tokens") ?: 0
-            val outputTokens = usage?.optInt("output_tokens") ?: 0
-
-            UnifiedAiResponse(
-                content = content.trim(),
-                promptTokens = inputTokens,
-                completionTokens = outputTokens,
-                totalTokens = inputTokens + outputTokens,
-                latencyMs = latency,
-                providerName = config.name,
-                modelName = config.modelName,
-                rawCurlCommand = rawCurl,
-                isSuccess = true
-            )
         } catch (e: Exception) {
             val latency = System.currentTimeMillis() - startTime
             UnifiedAiResponse(
@@ -286,43 +288,44 @@ class GeminiProtocolAdapter(
             .build()
 
         try {
-            val response = client.newCall(request).execute()
-            val latency = System.currentTimeMillis() - startTime
-            val responseBody = response.body?.string().orEmpty()
+            client.newCall(request).execute().use { response ->
+                val latency = System.currentTimeMillis() - startTime
+                val responseBody = response.body?.string().orEmpty()
 
-            if (!response.isSuccessful) {
-                return@withContext UnifiedAiResponse(
-                    content = "",
+                if (!response.isSuccessful) {
+                    return@withContext UnifiedAiResponse(
+                        content = "",
+                        latencyMs = latency,
+                        providerName = config.name,
+                        modelName = config.modelName,
+                        rawCurlCommand = rawCurl,
+                        isSuccess = false,
+                        errorMessage = "Lỗi Gemini [${response.code}]: $responseBody"
+                    )
+                }
+
+                val json = JSONObject(responseBody)
+                val candidates = json.optJSONArray("candidates")
+                val candidate0 = candidates?.optJSONObject(0)
+                val parts = candidate0?.optJSONObject("content")?.optJSONArray("parts")
+                val content = parts?.optJSONObject(0)?.optString("text").orEmpty()
+
+                val usage = json.optJSONObject("usageMetadata")
+                val promptTokens = usage?.optInt("promptTokenCount") ?: 0
+                val candidateTokens = usage?.optInt("candidatesTokenCount") ?: 0
+
+                UnifiedAiResponse(
+                    content = content.trim(),
+                    promptTokens = promptTokens,
+                    completionTokens = candidateTokens,
+                    totalTokens = promptTokens + candidateTokens,
                     latencyMs = latency,
                     providerName = config.name,
                     modelName = config.modelName,
                     rawCurlCommand = rawCurl,
-                    isSuccess = false,
-                    errorMessage = "Lỗi Gemini [${response.code}]: $responseBody"
+                    isSuccess = true
                 )
             }
-
-            val json = JSONObject(responseBody)
-            val candidates = json.optJSONArray("candidates")
-            val candidate0 = candidates?.optJSONObject(0)
-            val parts = candidate0?.optJSONObject("content")?.optJSONArray("parts")
-            val content = parts?.optJSONObject(0)?.optString("text").orEmpty()
-
-            val usage = json.optJSONObject("usageMetadata")
-            val promptTokens = usage?.optInt("promptTokenCount") ?: 0
-            val candidateTokens = usage?.optInt("candidatesTokenCount") ?: 0
-
-            UnifiedAiResponse(
-                content = content.trim(),
-                promptTokens = promptTokens,
-                completionTokens = candidateTokens,
-                totalTokens = promptTokens + candidateTokens,
-                latencyMs = latency,
-                providerName = config.name,
-                modelName = config.modelName,
-                rawCurlCommand = rawCurl,
-                isSuccess = true
-            )
         } catch (e: Exception) {
             val latency = System.currentTimeMillis() - startTime
             UnifiedAiResponse(

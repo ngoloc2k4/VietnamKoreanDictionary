@@ -243,18 +243,19 @@ fun HanjaMorphemeCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Big Chinese Character Badge
+                    // Big Chinese Character Badge (High contrast calligraphy container)
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.size(52.dp)
+                        shadowElevation = 2.dp,
+                        modifier = Modifier.size(54.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
                                 text = morpheme.hanja,
                                 style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         }
                     }

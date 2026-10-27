@@ -31,6 +31,11 @@ object KoreanVietnameseSearchMatcher {
         "은", "는", "을", "를", "고", "지만", "네", "지", "죠"
     )
 
+    // Precompiled Regexes to avoid high-frequency allocations in tight loops
+    private val COMMA_SEMICOLON_REGEX = Regex("[,;]+")
+    private val WHITESPACE_REGEX = Regex("\\s+")
+    private val VIET_DELIMITERS_REGEX = Regex("[,;\\s/]+")
+
     /**
      * Remove Vietnamese accents / diacritics
      * e.g. "Hạnh phúc" -> "hanh phuc", "Động từ" -> "dong tu", "Tiên sinh" -> "tien sinh"
@@ -193,18 +198,18 @@ object KoreanVietnameseSearchMatcher {
         }
 
         // 3. Unaccented Vietnamese Exact / Leading Match (gõ không dấu chuẩn xác)
-        val primaryVietNoAccent = vietNoAccent.split(Regex("[,;]+"))[0].trim()
+        val primaryVietNoAccent = vietNoAccent.split(COMMA_SEMICOLON_REGEX)[0].trim()
         if (primaryVietNoAccent == qNoAccent) {
             return MatchResult(word, 96, "Khớp nghĩa chính xác không dấu: \"$qNoAccent\"")
         }
-        val primaryTokens = primaryVietNoAccent.split(Regex("\\s+"))
+        val primaryTokens = primaryVietNoAccent.split(WHITESPACE_REGEX)
         if (primaryTokens.contains(qNoAccent)) {
             val isFirstToken = primaryTokens.firstOrNull() == qNoAccent
             val score = if (isFirstToken) 94 else 91
             return MatchResult(word, score, "Khớp từ nghĩa chính không dấu: \"$qNoAccent\"")
         }
 
-        val vietWords = vietNoAccent.split(Regex("[,;\\s/]+")).filter { it.isNotBlank() }
+        val vietWords = vietNoAccent.split(VIET_DELIMITERS_REGEX).filter { it.isNotBlank() }
         if (vietWords.any { it == qNoAccent } || vietNoAccent == qNoAccent) {
             val isFirst = vietWords.firstOrNull() == qNoAccent
             val score = if (isFirst) 90 else 88
