@@ -23,6 +23,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.data.model.WordEntity
 import com.example.ui.viewmodel.DictionaryViewModel
 import com.example.ui.viewmodel.WordFilter
@@ -392,17 +394,25 @@ fun DictionaryScreen(
         )
     }
 
-    // Quick Sentence Translator Sheet
+    // Fullscreen Bilingual Sentence Translator Popup
     if (showTranslatorSheet) {
-        ModalBottomSheet(
+        Dialog(
             onDismissRequest = { showTranslatorSheet = false },
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            dragHandle = { BottomSheetDefaults.DragHandle() }
-        ) {
-            TranslatorScreen(
-                viewModel = viewModel,
-                modifier = Modifier.fillMaxHeight(0.9f)
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                dismissOnBackPress = true
             )
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                TranslatorScreen(
+                    viewModel = viewModel,
+                    modifier = Modifier.fillMaxSize(),
+                    onClose = { showTranslatorSheet = false }
+                )
+            }
         }
     }
 

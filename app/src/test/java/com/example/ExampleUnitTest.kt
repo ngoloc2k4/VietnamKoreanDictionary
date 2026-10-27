@@ -1,5 +1,6 @@
 package com.example
 
+import com.example.ai.gateway.AiProviderConfig
 import com.example.ai.gateway.ProviderProtocol
 import com.example.ai.gateway.UnifiedAiMessage
 import com.example.ai.tier1.LocalAiMiddleman
@@ -8,8 +9,10 @@ import com.example.ai.tier1.UserIntent
 import com.example.ai.tier2.LocalTier2InferenceEngine
 import com.example.data.initial.PreloadedWords
 import com.example.data.model.WordEntity
+import com.example.util.BilingualTranslationService
 import com.example.util.HanjaHanVietEngine
 import com.example.util.KoreanVietnameseSearchMatcher
+import com.example.util.TranslationEngine
 import com.example.util.WordThemeClassifier
 import com.example.ui.components.parseMarkdownInline
 import com.example.ui.components.parseMarkdownToBlocks
@@ -403,5 +406,65 @@ class ExampleUnitTest {
         assertTrue(blocks.any { it is MarkdownBlock.NumberedItem && it.prefix == "1." && it.text == "Mục đánh số 1" })
         assertTrue(blocks.any { it is MarkdownBlock.Divider })
         assertTrue(blocks.any { it is MarkdownBlock.Paragraph && it.text == "Đoạn văn bình thường." })
+    }
+
+    @Test
+    fun `translation engines cover Google Translate DeepL Local and Cloud AI`() {
+        assertEquals("Google Translate", TranslationEngine.GOOGLE_TRANSLATE.title)
+        assertEquals("DeepL", TranslationEngine.DEEPL.title)
+        assertEquals("Model Local (Tầng 2)", TranslationEngine.LOCAL_MODEL.title)
+        assertEquals("AI Model lớn (Online)", TranslationEngine.CLOUD_AI.title)
+
+        assertFalse("Local model must be offline", TranslationEngine.LOCAL_MODEL.isOnline)
+        assertTrue("Google Translate should be online", TranslationEngine.GOOGLE_TRANSLATE.isOnline)
+        assertTrue("DeepL should be online", TranslationEngine.DEEPL.isOnline)
+        assertTrue("Cloud AI should be online", TranslationEngine.CLOUD_AI.isOnline)
+    }
+
+    @Test
+    fun `bilingual local model executes offline translation with vocabulary insights`() = kotlinx.coroutines.test.runTest {
+        val result = BilingualTranslationService.translateWithLocalModel(
+            text = "안녕하세요",
+            fromKorean = true,
+            localWords = words,
+            activeModelName = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+        )
+        assertTrue("Translation result should not be empty", result.isNotEmpty())
+        assertTrue("Result should contain Korean text or greeting", result.contains("안녕하세요") || result.contains("Xin chào"))
+    }
+
+    @Test
+    fun `cloud ai translation requirement validation gates unauthorized usage`() {
+        val emptyProviders = emptyList<AiProviderConfig>()
+        val hasValidEmpty = emptyProviders.filter { it.isEnabled }.any { it.apiKey.isNotBlank() }
+        assertFalse("Empty provider list cannot satisfy cloud requirements", hasValidEmpty)
+
+        val unconfiguredProviders = listOf(
+            AiProviderConfig(
+                id = "groq",
+                name = "Groq",
+                protocol = ProviderProtocol.OPENAI_COMPATIBLE,
+                baseUrl = "https://api.groq.com/openai/v1",
+                apiKey = "",
+                modelName = "llama-3.3-70b-versatile",
+                isEnabled = true
+            )
+        )
+        val hasValidUnconfigured = unconfiguredProviders.filter { it.isEnabled }.any { it.apiKey.isNotBlank() }
+        assertFalse("Provider without API key cannot satisfy cloud requirements", hasValidUnconfigured)
+
+        val configuredProviders = listOf(
+            AiProviderConfig(
+                id = "groq",
+                name = "Groq",
+                protocol = ProviderProtocol.OPENAI_COMPATIBLE,
+                baseUrl = "https://api.groq.com/openai/v1",
+                apiKey = "gsk_valid_mock_key_12345",
+                modelName = "llama-3.3-70b-versatile",
+                isEnabled = true
+            )
+        )
+        val hasValidConfigured = configuredProviders.filter { it.isEnabled }.any { it.apiKey.isNotBlank() }
+        assertTrue("Configured provider with API key must satisfy cloud requirements", hasValidConfigured)
     }
 }

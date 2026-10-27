@@ -210,6 +210,19 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     private val _isTranslating = MutableStateFlow(false)
     val isTranslating = _isTranslating.asStateFlow()
 
+    private val _selectedTranslationEngine = MutableStateFlow(TranslationEngine.GOOGLE_TRANSLATE)
+    val selectedTranslationEngine = _selectedTranslationEngine.asStateFlow()
+
+    fun setTranslationEngine(engine: TranslationEngine) {
+        _selectedTranslationEngine.value = engine
+    }
+
+    fun hasValidCloudAiProvider(): Boolean {
+        return aiGateway.providers.value.filter { it.isEnabled }.any {
+            it.apiKey.isNotBlank() || it.baseUrl.contains("localhost") || it.baseUrl.contains("10.0.2.2")
+        }
+    }
+
     // Flashcard state
     private val _flashcardFilter = MutableStateFlow(FlashcardFilter.ALL)
     val flashcardFilter = _flashcardFilter.asStateFlow()
@@ -616,17 +629,55 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         val src = _translationSource.value.trim()
         if (src.isEmpty()) return
 
+        val engine = _selectedTranslationEngine.value
+
+        // Kiểm tra yêu cầu hợp lệ đối với AI Model lớn (Online)
+        if (engine == TranslationEngine.CLOUD_AI && !hasValidCloudAiProvider()) {
+            _translationResult.value = "⚠️ Yêu cầu chưa hợp lệ:\n\n" +
+                    "Bạn đã chọn chế độ dịch 'AI Model lớn hơn (Online)', nhưng chưa có nhà cung cấp AI nào (như Groq, OpenRouter, DeepSeek, Gemini...) được cấu hình API Key hợp lệ.\n\n" +
+                    "👉 Vui lòng nhấn vào biểu tượng bánh răng 'Cài đặt AI' để nhập API Key hợp lệ trước khi sử dụng."
+            return
+        }
+
         viewModelScope.launch {
             _isTranslating.value = true
             try {
-                val res = repository.translateOffline(src, _isFromKorean.value)
+                val res = when (engine) {
+                    TranslationEngine.GOOGLE_TRANSLATE -> {
+                        BilingualTranslationService.translateWithGoogle(src, _isFromKorean.value)
+                    }
+                    TranslationEngine.DEEPL -> {
+                        BilingualTranslationService.translateWithDeepL(src, _isFromKorean.value)
+                    }
+                    TranslationEngine.LOCAL_MODEL -> {
+                        val activeModel = _activeTier2Model.value?.fileName ?: "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+                        BilingualTranslationService.translateWithLocalModel(
+                            src,
+                            _isFromKorean.value,
+                            allWordsList.value,
+                            activeModel
+                        )
+                    }
+                    TranslationEngine.CLOUD_AI -> {
+                        BilingualTranslationService.translateWithCloudAi(
+                            src,
+                            _isFromKorean.value,
+                            aiGateway
+                        )
+                    }
+                }
                 _translationResult.value = res
 
                 val fromLang = if (_isFromKorean.value) "Tiếng Hàn" else "Tiếng Việt"
                 val toLang = if (_isFromKorean.value) "Tiếng Việt" else "Tiếng Hàn"
                 repository.saveTranslation(src, res, fromLang, toLang)
             } catch (e: Exception) {
-                _translationResult.value = "⚠️ Lỗi dịch: ${e.localizedMessage ?: e.message}"
+                try {
+                    val offlineFallback = repository.translateOffline(src, _isFromKorean.value)
+                    _translationResult.value = "$offlineFallback\n\n*(Lưu ý: Không thể kết nối tới ${engine.title}, hệ thống đã chuyển sang bản dịch từ điển ngoại tuyến)*"
+                } catch (_: Exception) {
+                    _translationResult.value = "⚠️ Lỗi dịch: ${e.localizedMessage ?: e.message}"
+                }
             } finally {
                 _isTranslating.value = false
             }
