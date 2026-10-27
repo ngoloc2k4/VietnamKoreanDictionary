@@ -24,6 +24,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.model.WordEntity
 import com.example.data.model.parseExamples
+import com.example.ui.components.RichMarkdownText
 
 @Composable
 fun WordDetailSheet(
@@ -315,11 +316,10 @@ fun WordDetailSheet(
                                             modifier = Modifier.size(20.dp)
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = word.grammarNotes,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            lineHeight = 18.sp
+                                        RichMarkdownText(
+                                            markdown = word.grammarNotes,
+                                            baseTextStyle = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }

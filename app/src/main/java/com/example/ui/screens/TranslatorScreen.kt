@@ -35,6 +35,7 @@ fun TranslatorScreen(
     val isFromKorean by viewModel.isFromKorean.collectAsState()
     val isTranslating by viewModel.isTranslating.collectAsState()
     val translationHistory by viewModel.translationHistory.collectAsState()
+    var showClearTranslationHistoryDialog by remember { mutableStateOf(false) }
 
     val fromLangLabel = if (isFromKorean) "Tiếng Hàn" else "Tiếng Việt"
     val toLangLabel = if (isFromKorean) "Tiếng Việt" else "Tiếng Hàn"
@@ -301,7 +302,7 @@ fun TranslatorScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
 
-                    TextButton(onClick = { viewModel.clearTranslationHistory() }) {
+                    TextButton(onClick = { showClearTranslationHistoryDialog = true }) {
                         Text("Xóa lịch sử", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                     }
                 }
@@ -356,5 +357,41 @@ fun TranslatorScreen(
                 }
             }
         }
+    }
+
+    if (showClearTranslationHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearTranslationHistoryDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.DeleteOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text("Xóa lịch sử dịch thuật?", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text("Toàn bộ các câu và đoạn văn bản bạn đã dịch gần đây sẽ bị xóa.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.clearTranslationHistory()
+                        showClearTranslationHistoryDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Xóa lịch sử")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showClearTranslationHistoryDialog = false }) {
+                    Text("Hủy")
+                }
+            }
+        )
     }
 }

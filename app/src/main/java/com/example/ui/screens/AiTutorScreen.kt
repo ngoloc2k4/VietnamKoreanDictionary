@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai.gateway.UnifiedAiResponse
 import com.example.ai.tier1.Tier2ExecutionMode
+import com.example.ui.components.RichMarkdownText
 import com.example.ui.viewmodel.ChatMessageUi
 import com.example.ui.viewmodel.DictionaryViewModel
 import kotlinx.coroutines.launch
@@ -57,6 +58,7 @@ fun AiTutorScreen(
     var inputText by remember { mutableStateOf("") }
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showStorageSheet by remember { mutableStateOf(false) }
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
     var selectedDebugResponse by remember { mutableStateOf<UnifiedAiResponse?>(null) }
 
     val defaultProvider = providers.firstOrNull { it.isDefault } ?: providers.firstOrNull()
@@ -116,15 +118,15 @@ fun AiTutorScreen(
                 )
             }
 
-            Row {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { showStorageSheet = true }) {
                     Icon(imageVector = Icons.Default.Memory, contentDescription = "Quản lý Model AI Nhúng (Tầng 1)", tint = MaterialTheme.colorScheme.primary)
                 }
-                IconButton(onClick = { viewModel.clearAiChat() }) {
-                    Icon(imageVector = Icons.Default.DeleteOutline, contentDescription = "Làm mới hội thoại")
-                }
                 IconButton(onClick = { showSettingsSheet = true }) {
                     Icon(imageVector = Icons.Outlined.Tune, contentDescription = "Cấu hình AI Provider (Tầng 2)", tint = MaterialTheme.colorScheme.primary)
+                }
+                IconButton(onClick = { showClearHistoryDialog = true }) {
+                    Icon(imageVector = Icons.Default.DeleteOutline, contentDescription = "Xóa lịch sử trò chuyện", tint = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -165,6 +167,41 @@ fun AiTutorScreen(
                     { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
                 } else null
             )
+        }
+
+        // Conversation Status Bar & Clear History Action
+        if (chatMessages.size > 1) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Lịch sử hội thoại (${chatMessages.size} tin nhắn)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+                TextButton(
+                    onClick = { showClearHistoryDialog = true },
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Xóa lịch sử",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
         }
 
         // Chat Message List
@@ -299,6 +336,44 @@ fun AiTutorScreen(
         )
     }
 
+    // Confirmation Dialog for Clearing Chat History
+    if (showClearHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearHistoryDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.DeleteOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text("Xóa lịch sử trò chuyện?", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text("Toàn bộ các câu hỏi và câu trả lời trong phiên hội thoại AI hiện tại sẽ được làm mới về trạng thái ban đầu.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.clearAiChat()
+                        showClearHistoryDialog = false
+                        Toast.makeText(context, "Đã xóa lịch sử trò chuyện", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Xóa lịch sử")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showClearHistoryDialog = false }) {
+                    Text("Hủy")
+                }
+            }
+        )
+    }
+
     // AI Debug Console Modal (FLOSS Feature)
     selectedDebugResponse?.let { debug ->
         AiDebugConsoleDialog(
@@ -313,6 +388,7 @@ fun ChatMessageItem(
     message: ChatMessageUi,
     onOpenDebug: (UnifiedAiResponse) -> Unit
 ) {
+    val context = LocalContext.current
     val isUser = message.role == "user"
 
     Row(
@@ -320,7 +396,7 @@ fun ChatMessageItem(
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
         Column(
-            modifier = Modifier.widthIn(max = 320.dp),
+            modifier = Modifier.fillMaxWidth(if (isUser) 0.85f else 0.96f),
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
         ) {
             // Badge for Offline / Local RAG handled
@@ -331,7 +407,7 @@ fun ChatMessageItem(
                     modifier = Modifier.padding(bottom = 4.dp)
                 ) {
                     Text(
-                        text = "⚡ Trả lời ngoại tuyến (Local DB - 0 Token)",
+                        text = "⚡ Trả lời ngoại tuyến on-device (0 Token)",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -349,41 +425,83 @@ fun ChatMessageItem(
                 color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                 tonalElevation = if (isUser) 0.dp else 1.dp
             ) {
-                Text(
-                    text = message.content,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(14.dp)
-                )
+                Box(modifier = Modifier.padding(14.dp)) {
+                    RichMarkdownText(
+                        markdown = message.content,
+                        color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        baseTextStyle = MaterialTheme.typography.bodyMedium,
+                        isUser = isUser
+                    )
+                }
             }
 
-            // Debug Pill Button for Cloud AI
-            if (message.debugInfo != null) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onOpenDebug(message.debugInfo) }
+            // Quick actions below assistant message (Copy & Debug)
+            if (!isUser) {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    // Copy action button
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("AI Tutor", message.content))
+                                Toast.makeText(context, "Đã sao chép phản hồi", Toast.LENGTH_SHORT).show()
+                            }
                     ) {
-                        Icon(
-                            imageVector = Icons.Outlined.BugReport,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "${message.debugInfo.providerName} • ${message.debugInfo.latencyMs}ms • ${message.debugInfo.totalTokens} tokens",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline,
-                            fontSize = 10.sp
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.ContentCopy,
+                                contentDescription = "Sao chép",
+                                tint = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Sao chép",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline,
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+
+                    // Debug Pill Button for Cloud AI
+                    if (message.debugInfo != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onOpenDebug(message.debugInfo) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.BugReport,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "${message.debugInfo.providerName} • ${message.debugInfo.latencyMs}ms",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.outline,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
                     }
                 }
             }

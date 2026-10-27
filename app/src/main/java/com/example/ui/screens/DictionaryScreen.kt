@@ -40,7 +40,9 @@ fun DictionaryScreen(
     val totalCount by viewModel.totalWordCount.collectAsState()
     val selectedWord by viewModel.selectedWord.collectAsState()
     val displayLimit by viewModel.displayLimit.collectAsState()
+    val searchHistory by viewModel.searchHistory.collectAsState()
     var showTranslatorSheet by remember { mutableStateOf(false) }
+    var showClearSearchHistoryDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -143,6 +145,68 @@ fun DictionaryScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
+                }
+            }
+        }
+
+        // Recent Search History when search field is blank
+        if (searchQuery.isBlank() && searchHistory.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, top = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Lịch sử tìm kiếm gần đây",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TextButton(
+                    onClick = { showClearSearchHistoryDialog = true },
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = null,
+                        modifier = Modifier.size(13.dp),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "Xóa lịch sử",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                searchHistory.take(8).forEach { item ->
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { viewModel.onSearchQueryChanged(item.query) }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "🕒 ${item.query}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -284,6 +348,43 @@ fun DictionaryScreen(
                 modifier = Modifier.fillMaxHeight(0.9f)
             )
         }
+    }
+
+    // Confirmation Dialog for Clearing Search History
+    if (showClearSearchHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearSearchHistoryDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.DeleteOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text("Xóa lịch sử tìm kiếm?", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text("Toàn bộ các từ khóa và kết quả bạn đã tra cứu gần đây sẽ bị xóa.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.clearSearchHistory()
+                        showClearSearchHistoryDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Xóa lịch sử")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showClearSearchHistoryDialog = false }) {
+                    Text("Hủy")
+                }
+            }
+        )
     }
 }
 

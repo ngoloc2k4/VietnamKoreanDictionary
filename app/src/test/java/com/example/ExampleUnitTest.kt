@@ -9,6 +9,9 @@ import com.example.ai.tier2.LocalTier2InferenceEngine
 import com.example.data.initial.PreloadedWords
 import com.example.util.HanjaHanVietEngine
 import com.example.util.KoreanVietnameseSearchMatcher
+import com.example.ui.components.parseMarkdownInline
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -271,5 +274,14 @@ class ExampleUnitTest {
         val camOnResults = KoreanVietnameseSearchMatcher.searchAndRank(words, "cam on")
         assertTrue(camOnResults.isNotEmpty())
         assertTrue("Matches should contain either 감사합니다 or 감사하다", camOnResults.first().word.korean in listOf("감사합니다", "감사하다"))
+    }
+
+    @Test
+    fun `markdown inline parser converts markers to styled spans`() {
+        val parsed = parseMarkdownInline("**Đậm** và *Nghiêng* và ***Đậm Nghiêng*** và `code`")
+        assertEquals("Đậm và Nghiêng và Đậm Nghiêng và  code ", parsed.text)
+        assertTrue("Span styles should not be empty", parsed.spanStyles.isNotEmpty())
+        assertTrue("Should contain bold style", parsed.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
+        assertTrue("Should contain italic style", parsed.spanStyles.any { it.item.fontStyle == FontStyle.Italic })
     }
 }
