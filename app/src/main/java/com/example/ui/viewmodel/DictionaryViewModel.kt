@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ai.gateway.*
 import com.example.ai.tier1.*
+import com.example.ai.tier2.LocalTier2InferenceEngine
 import com.example.data.model.SearchHistoryEntity
 import com.example.data.model.TranslationHistoryEntity
 import com.example.data.model.WordEntity
@@ -250,12 +251,28 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                     )
                     _aiChatMessages.value = _aiChatMessages.value + offlineMsg
                 } else {
-                    // TIER 2: Call Multi-Provider Cloud Gateway with optimized RAG request
                     val request = decision.optimizedRequest ?: UnifiedAiRequest(
                         messages = listOf(UnifiedAiMessage("user", trimmed))
                     )
 
-                    val response = aiGateway.executeWithFallback(request)
+                    // TIER 2: Hybrid execution (Offline Heavy Model 0.5B-0.8B or Online Cloud Gateway)
+                    val isTier2Offline = _tier2ExecutionMode.value == Tier2ExecutionMode.OFFLINE_LOCAL
+                    val tier2Model = _activeTier2Model.value
+
+                    val response = if (isTier2Offline && tier2Model != null) {
+                        // Execute locally with Tier 2 heavy model (0.5B - 0.8B)
+                        LocalTier2InferenceEngine.executeOfflineInference(request, tier2Model, localCandidates)
+                    } else {
+                        // Call online Cloud Multi-Provider Gateway
+                        val onlineRes = aiGateway.executeWithFallback(request)
+                        if (!onlineRes.isSuccess && tier2Model != null) {
+                            // Auto-fallback to offline model if online fails
+                            val fallbackRes = LocalTier2InferenceEngine.executeOfflineInference(request, tier2Model, localCandidates)
+                            fallbackRes.copy(content = "⚠️ *Không thể kết nối máy chủ trực tuyến, tự động chuyển sang mô hình ngoại tuyến Tầng 2:*\n\n" + fallbackRes.content)
+                        } else {
+                            onlineRes
+                        }
+                    }
 
                     val replyMsg = if (response.isSuccess) {
                         ChatMessageUi(
@@ -325,21 +342,41 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     val storageReport = _storageReport.asStateFlow()
 
     // ==========================================
-    // ON-DEVICE LOCAL AI MODELS (TIER 1)
+    // ON-DEVICE LOCAL AI MODELS (TIER 1 & TIER 2)
     // ==========================================
     private val _downloadedModels = MutableStateFlow<List<LocalModelInfo>>(AiModelManager.getDownloadedModels(application))
     val downloadedModels = _downloadedModels.asStateFlow()
 
-    private val _activeLocalModel = MutableStateFlow<LocalModelInfo?>(AiModelManager.getActiveModel(application))
+    private val _activeLocalModel = MutableStateFlow<LocalModelInfo?>(AiModelManager.getActiveTier1Model(application))
     val activeLocalModel = _activeLocalModel.asStateFlow()
+
+    private val _activeTier2Model = MutableStateFlow<LocalModelInfo?>(AiModelManager.getActiveTier2Model(application))
+    val activeTier2Model = _activeTier2Model.asStateFlow()
+
+    private val _tier2ExecutionMode = MutableStateFlow(AiModelManager.getTier2ExecutionMode(application))
+    val tier2ExecutionMode = _tier2ExecutionMode.asStateFlow()
 
     val modelDownloadState: StateFlow<DownloadState> = AiModelManager.downloadState
 
     fun refreshDownloadedModels() {
         val app = getApplication<Application>()
         _downloadedModels.value = AiModelManager.getDownloadedModels(app)
-        _activeLocalModel.value = AiModelManager.getActiveModel(app)
+        _activeLocalModel.value = AiModelManager.getActiveTier1Model(app)
+        _activeTier2Model.value = AiModelManager.getActiveTier2Model(app)
+        _tier2ExecutionMode.value = AiModelManager.getTier2ExecutionMode(app)
         refreshStorageReport()
+    }
+
+    fun setTier2ExecutionMode(mode: Tier2ExecutionMode) {
+        val app = getApplication<Application>()
+        AiModelManager.setTier2ExecutionMode(app, mode)
+        _tier2ExecutionMode.value = mode
+    }
+
+    fun setActiveTier2Model(fileName: String?) {
+        val app = getApplication<Application>()
+        AiModelManager.setActiveTier2Model(app, fileName)
+        refreshDownloadedModels()
     }
 
     fun downloadModelPreset(preset: ModelPreset) {
@@ -349,9 +386,9 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun downloadCustomModel(url: String, fileName: String) {
+    fun downloadCustomModel(url: String, fileName: String, tier: Int = 1) {
         viewModelScope.launch {
-            AiModelManager.downloadCustomUrl(getApplication(), url, fileName)
+            AiModelManager.downloadCustomUrl(getApplication(), url, fileName, tier)
             refreshDownloadedModels()
         }
     }
@@ -371,13 +408,13 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
 
     fun setActiveLocalModel(fileName: String?) {
         val app = getApplication<Application>()
-        AiModelManager.setActiveModel(app, fileName)
+        AiModelManager.setActiveTier1Model(app, fileName)
         refreshDownloadedModels()
     }
 
-    fun importLocalModel(uri: Uri, name: String) {
+    fun importLocalModel(uri: Uri, name: String, tier: Int = 1) {
         viewModelScope.launch {
-            AiModelManager.importFromUri(getApplication(), uri, name)
+            AiModelManager.importFromUri(getApplication(), uri, name, tier)
             refreshDownloadedModels()
         }
     }

@@ -130,7 +130,7 @@ jobs:
             - **Hệ điều hành hỗ trợ**: Android 8.0 Oreo trở lên (API 26+)
             - **Kho từ vựng**: 78.000 từ vựng ngoại tuyến (Room SQLite)
             - **Tìm kiếm thông minh**: Hỗ trợ tiếng Hàn, tiếng Việt không dấu, và phụ âm 초성
-            - **AI Tutor & Gateway**: Kiến trúc AI 2 tầng (Offline RAG + Multi-Provider Cloud)
+            - **AI Tutor & Gateway 2 Tầng**: Tầng 1 tối ưu hóa prompt; Tầng 2 hỗ trợ mô hình lớn ngoại tuyến (Qwen2.5-0.5B, SmolLM2-360M, Danube3-500M) chạy on-device và Cloud Gateway (Groq, Anthropic, Gemini, OpenAI)
             - **Hán tự & Hán-Việt**: Bảng gốc từ và quy luật chuyển âm
             - **Debug Console**: Máy chủ HTTP giám sát nội bộ (Cổng 8888)
             

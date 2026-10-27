@@ -43,10 +43,12 @@ fun StorageManagerSheet(
 
     val downloadedModels by viewModel.downloadedModels.collectAsState()
     val activeLocalModel by viewModel.activeLocalModel.collectAsState()
+    val activeTier2Model by viewModel.activeTier2Model.collectAsState()
     val downloadState by viewModel.modelDownloadState.collectAsState()
     var showCustomUrlDialog by remember { mutableStateOf(false) }
     var customUrlText by remember { mutableStateOf("") }
     var customNameText by remember { mutableStateOf("") }
+    var customTierSelected by remember { mutableStateOf(1) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -318,34 +320,61 @@ fun StorageManagerSheet(
                     // Active model status banner
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = if (activeLocalModel != null) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                               else MaterialTheme.colorScheme.surface,
+                        color = MaterialTheme.colorScheme.surface,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (activeLocalModel != null) "● Mô hình đang chạy on-device:"
-                                           else "● Đang sử dụng chế độ:",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (activeLocalModel != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = activeLocalModel?.name ?: "Heuristic Siêu Nhẹ (0MB, tiết kiệm RAM)",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "● Tầng 1 (Local Router):",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (activeLocalModel != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = activeLocalModel?.name ?: "Heuristic Siêu Nhẹ (0MB, tiết kiệm RAM)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                if (activeLocalModel != null) {
+                                    TextButton(onClick = { viewModel.setActiveLocalModel(null) }) {
+                                        Text("Tắt", fontSize = 11.sp)
+                                    }
+                                }
                             }
 
-                            if (activeLocalModel != null) {
-                                TextButton(onClick = { viewModel.setActiveLocalModel(null) }) {
-                                    Text("Tắt (Heuristic)", fontSize = 11.sp)
+                            HorizontalDivider()
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "● Tầng 2 (Heavy Model):",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (activeTier2Model != null) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = activeTier2Model?.name ?: "Trực Tuyến (Cloud Multi-Provider)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                if (activeTier2Model != null) {
+                                    TextButton(onClick = { viewModel.setActiveTier2Model(null) }) {
+                                        Text("Dùng Cloud", fontSize = 11.sp)
+                                    }
                                 }
                             }
                         }
@@ -428,7 +457,7 @@ fun StorageManagerSheet(
                     AiModelManager.PRESET_MODELS.forEach { preset ->
                         val downloaded = downloadedModels.firstOrNull { it.fileName == preset.fileName }
                         val isDownloading = (downloadState as? DownloadState.Downloading)?.modelId == preset.id
-                        val isActive = downloaded?.isActive == true
+                        val isActive = if (preset.tier == 1) downloaded?.isActiveTier1 == true else downloaded?.isActiveTier2 == true
 
                         Surface(
                             shape = RoundedCornerShape(10.dp),
@@ -489,10 +518,16 @@ fun StorageManagerSheet(
                                         if (downloaded != null) {
                                             if (!isActive) {
                                                 OutlinedButton(
-                                                    onClick = { viewModel.setActiveLocalModel(downloaded.fileName) },
+                                                    onClick = {
+                                                        if (preset.tier == 1) {
+                                                            viewModel.setActiveLocalModel(downloaded.fileName)
+                                                        } else {
+                                                            viewModel.setActiveTier2Model(downloaded.fileName)
+                                                        }
+                                                    },
                                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
                                                 ) {
-                                                    Text("Kích hoạt", fontSize = 11.sp)
+                                                    Text(if (preset.tier == 1) "Kích hoạt T1" else "Kích hoạt T2", fontSize = 11.sp)
                                                 }
                                             } else {
                                                 Button(

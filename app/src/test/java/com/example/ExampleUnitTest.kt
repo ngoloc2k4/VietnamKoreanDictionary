@@ -3,7 +3,9 @@ package com.example
 import com.example.ai.gateway.ProviderProtocol
 import com.example.ai.gateway.UnifiedAiMessage
 import com.example.ai.tier1.LocalAiMiddleman
+import com.example.ai.tier1.Tier2ExecutionMode
 import com.example.ai.tier1.UserIntent
+import com.example.ai.tier2.LocalTier2InferenceEngine
 import com.example.data.initial.PreloadedWords
 import com.example.util.HanjaHanVietEngine
 import com.example.util.KoreanVietnameseSearchMatcher
@@ -179,5 +181,57 @@ class ExampleUnitTest {
         )
         assertFalse(decisionHeuristic.isLocalModelActive)
         assertNull(decisionHeuristic.activeModelName)
+    }
+
+    @Test
+    fun `tier 2 model presets include 0_5B to 0_8B models for offline execution`() {
+        val presets = com.example.ai.tier1.AiModelManager.PRESET_MODELS
+        val tier2Presets = presets.filter { it.tier == 2 }
+
+        assertTrue("Should have at least 3 Tier 2 presets", tier2Presets.size >= 3)
+
+        // Qwen 2.5 0.5B
+        val qwen = tier2Presets.find { it.id == "qwen2_5_05b_q4" }
+        assertNotNull("Qwen 2.5 0.5B must exist", qwen)
+        assertEquals("qwen2.5-0.5b-instruct-q4_k_m.gguf", qwen!!.fileName)
+        assertTrue("Qwen size should be ~390MB", qwen.approximateSizeMb in 350.0..450.0)
+        assertTrue(qwen.downloadUrl.contains("Qwen/Qwen2.5-0.5B-Instruct-GGUF"))
+
+        // SmolLM2 360M
+        val smol360 = tier2Presets.find { it.id == "smollm2_360m_q4" }
+        assertNotNull("SmolLM2 360M must exist", smol360)
+        assertEquals("smollm2-360m-instruct-q4_k_m.gguf", smol360!!.fileName)
+        assertTrue("SmolLM2 360M size should be ~260MB", smol360.approximateSizeMb in 240.0..300.0)
+
+        // Danube3 500M
+        val danube = tier2Presets.find { it.id == "danube3_500m_q4" }
+        assertNotNull("Danube3 500M must exist", danube)
+        assertEquals("h2o-danube3-500m-chat-q4_k_m.gguf", danube!!.fileName)
+    }
+
+    @Test
+    fun `tier 2 local inference engine produces structured response offline`() {
+        // Test grammar explanation
+        val grammarResponse = LocalTier2InferenceEngine.executeOfflineInference(
+            query = "Phân biệt ngữ pháp -는데 và -지만",
+            localWords = words,
+            modelFileName = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+        )
+
+        assertTrue("Inference response must succeed", grammarResponse.isSuccess)
+        assertEquals("qwen2.5-0.5b-instruct-q4_k_m.gguf", grammarResponse.modelName)
+        assertTrue("Provider name must indicate Tier 2 local", grammarResponse.providerName.contains("Tier 2 Local"))
+        assertTrue("Grammar analysis should contain content", grammarResponse.content.isNotEmpty())
+        assertTrue("Latency should be non-negative", grammarResponse.latencyMs >= 0)
+
+        // Test vocabulary inquiry with Hanja morpheme linkage
+        val vocabResponse = LocalTier2InferenceEngine.executeOfflineInference(
+            query = "Học tập trong tiếng Hàn là gì?",
+            localWords = words,
+            modelFileName = "smollm2-360m-instruct-q4_k_m.gguf"
+        )
+
+        assertTrue(vocabResponse.isSuccess)
+        assertTrue("Should include Korean vocabulary", vocabResponse.content.contains("공부하다") || vocabResponse.content.contains("Học tập"))
     }
 }

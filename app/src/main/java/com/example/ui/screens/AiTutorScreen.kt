@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai.gateway.UnifiedAiResponse
+import com.example.ai.tier1.Tier2ExecutionMode
 import com.example.ui.viewmodel.ChatMessageUi
 import com.example.ui.viewmodel.DictionaryViewModel
 import kotlinx.coroutines.launch
@@ -50,6 +51,8 @@ fun AiTutorScreen(
     val isThinking by viewModel.isAiThinking.collectAsState()
     val providers by viewModel.aiProviders.collectAsState()
     val activeLocalModel by viewModel.activeLocalModel.collectAsState()
+    val activeTier2Model by viewModel.activeTier2Model.collectAsState()
+    val tier2Mode by viewModel.tier2ExecutionMode.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
     var showSettingsSheet by remember { mutableStateOf(false) }
@@ -100,8 +103,14 @@ fun AiTutorScreen(
                     }
                 }
 
+                val tier2Label = if (tier2Mode == Tier2ExecutionMode.OFFLINE_LOCAL) {
+                    "Offline (${activeTier2Model?.name ?: "Chưa chọn"})"
+                } else {
+                    "Cloud (${defaultProvider?.name ?: "Chưa chọn"})"
+                }
+
                 Text(
-                    text = "Tầng 1 (Local): ${activeLocalModel?.name ?: "Heuristic 0MB"} • Tầng 2: ${defaultProvider?.name ?: "Chưa chọn"}",
+                    text = "Tầng 1: ${activeLocalModel?.name ?: "Heuristic"} • Tầng 2: $tier2Label",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
