@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.WordEntity
 import com.example.ui.viewmodel.DictionaryViewModel
 import com.example.ui.viewmodel.WordFilter
+import com.example.ui.viewmodel.WordFilterGroup
 import com.example.util.MatchResult
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,6 +44,13 @@ fun DictionaryScreen(
     val searchHistory by viewModel.searchHistory.collectAsState()
     var showTranslatorSheet by remember { mutableStateOf(false) }
     var showClearSearchHistoryDialog by remember { mutableStateOf(false) }
+    var activeFilterGroup by remember { mutableStateOf(selectedFilter.group) }
+
+    LaunchedEffect(selectedFilter) {
+        if (selectedFilter != WordFilter.ALL) {
+            activeFilterGroup = selectedFilter.group
+        }
+    }
 
     Column(
         modifier = modifier
@@ -154,7 +162,7 @@ fun DictionaryScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, top = 6.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -211,26 +219,74 @@ fun DictionaryScreen(
             }
         }
 
-        // Filter chips row
+        // Filter groups row (Tất cả, Cấp độ TOPIK 1-6, Chủ đề đời sống, Từ loại)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp)
+                .padding(top = 8.dp, bottom = 4.dp)
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            WordFilter.values().forEach { filter ->
+            WordFilterGroup.values().forEach { group ->
+                val isGroupActive = if (group == WordFilterGroup.ALL) {
+                    selectedFilter == WordFilter.ALL
+                } else {
+                    activeFilterGroup == group && selectedFilter != WordFilter.ALL
+                }
                 FilterChip(
-                    selected = selectedFilter == filter,
-                    onClick = { viewModel.onFilterSelected(filter) },
-                    label = { Text(filter.label, fontSize = 13.sp) },
+                    selected = isGroupActive,
+                    onClick = {
+                        activeFilterGroup = group
+                        if (group == WordFilterGroup.ALL) {
+                            viewModel.onFilterSelected(WordFilter.ALL)
+                        } else {
+                            if (selectedFilter.group != group) {
+                                val firstInGroup = WordFilter.values().firstOrNull { it.group == group }
+                                if (firstInGroup != null) {
+                                    viewModel.onFilterSelected(firstInGroup)
+                                }
+                            }
+                        }
+                    },
+                    label = {
+                        Text(
+                            text = group.label,
+                            fontSize = 13.sp,
+                            fontWeight = if (isGroupActive) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
                     shape = RoundedCornerShape(20.dp),
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primary,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 )
+            }
+        }
+
+        // Sub-filter chips row (Chi tiết các cấp độ TOPIK 1-6, các chủ đề, hoặc từ loại)
+        if (activeFilterGroup != WordFilterGroup.ALL && selectedFilter != WordFilter.ALL) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                WordFilter.values().filter { it.group == activeFilterGroup }.forEach { filter ->
+                    FilterChip(
+                        selected = selectedFilter == filter,
+                        onClick = { viewModel.onFilterSelected(filter) },
+                        label = { Text(filter.label, fontSize = 12.sp) },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    )
+                }
             }
         }
 

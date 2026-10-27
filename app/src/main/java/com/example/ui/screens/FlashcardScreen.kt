@@ -30,6 +30,7 @@ import com.example.data.model.WordEntity
 import com.example.data.model.parseExamples
 import com.example.ui.viewmodel.DictionaryViewModel
 import com.example.ui.viewmodel.FlashcardFilter
+import com.example.ui.viewmodel.FlashcardFilterGroup
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,6 +42,11 @@ fun FlashcardScreen(
     val currentIndex by viewModel.flashcardIndex.collectAsState()
     val isFlipped by viewModel.isCardFlipped.collectAsState()
     val currentFilter by viewModel.flashcardFilter.collectAsState()
+    var activeFlashcardGroup by remember { mutableStateOf(currentFilter.group) }
+
+    LaunchedEffect(currentFilter) {
+        activeFlashcardGroup = currentFilter.group
+    }
 
     val rotation by animateFloatAsState(
         targetValue = if (isFlipped) 180f else 0f,
@@ -80,19 +86,55 @@ fun FlashcardScreen(
             }
         }
 
-        // Filter chips (Tất cả, Yêu thích, Cần ôn tập, TOPIK I, TOPIK II)
+        // Filter group chips (Ôn tập, Cấp độ TOPIK 1-6, Chủ đề đời sống)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            FlashcardFilter.values().forEach { filter ->
+            FlashcardFilterGroup.values().forEach { group ->
+                val isGroupActive = activeFlashcardGroup == group
+                FilterChip(
+                    selected = isGroupActive,
+                    onClick = {
+                        activeFlashcardGroup = group
+                        if (currentFilter.group != group) {
+                            val firstInGroup = FlashcardFilter.values().firstOrNull { it.group == group }
+                            if (firstInGroup != null) {
+                                viewModel.setFlashcardFilter(firstInGroup)
+                            }
+                        }
+                    },
+                    label = {
+                        Text(
+                            text = group.label,
+                            fontSize = 13.sp,
+                            fontWeight = if (isGroupActive) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                )
+            }
+        }
+
+        // Sub-filter chips row (Chi tiết các cấp độ TOPIK 1-6, các chủ đề, hoặc mục ôn tập)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            FlashcardFilter.values().filter { it.group == activeFlashcardGroup }.forEach { filter ->
                 FilterChip(
                     selected = currentFilter == filter,
                     onClick = { viewModel.setFlashcardFilter(filter) },
-                    label = { Text(filter.label, fontSize = 13.sp) },
-                    shape = RoundedCornerShape(20.dp),
+                    label = { Text(filter.label, fontSize = 12.sp) },
+                    shape = RoundedCornerShape(16.dp),
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.primary,
                         selectedLabelColor = MaterialTheme.colorScheme.onPrimary

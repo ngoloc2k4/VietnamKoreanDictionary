@@ -15,22 +15,69 @@ import com.example.util.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-enum class WordFilter(val label: String) {
+enum class WordFilterGroup(val label: String) {
     ALL("Tất cả"),
-    VERB("Động từ"),
-    ADJECTIVE("Tính từ"),
-    NOUN("Danh từ"),
-    TOPIK_1("TOPIK I"),
-    TOPIK_2("TOPIK II"),
-    HIGH_FREQ("Tần suất cao ★")
+    TOPIK("Cấp độ TOPIK (1-6)"),
+    THEME("Chủ đề đời sống"),
+    PART_OF_SPEECH("Từ loại")
 }
 
-enum class FlashcardFilter(val label: String) {
-    ALL("Tất cả"),
-    FAVORITES("Yêu thích"),
-    NEED_REVIEW("Cần ôn tập"),
-    TOPIK_1("TOPIK I"),
-    TOPIK_2("TOPIK II")
+enum class WordFilter(val label: String, val group: WordFilterGroup = WordFilterGroup.ALL) {
+    ALL("Tất cả", WordFilterGroup.ALL),
+    
+    // Cấp độ TOPIK đủ từ 1 đến 6
+    TOPIK_1("TOPIK 1", WordFilterGroup.TOPIK),
+    TOPIK_2("TOPIK 2", WordFilterGroup.TOPIK),
+    TOPIK_3("TOPIK 3", WordFilterGroup.TOPIK),
+    TOPIK_4("TOPIK 4", WordFilterGroup.TOPIK),
+    TOPIK_5("TOPIK 5", WordFilterGroup.TOPIK),
+    TOPIK_6("TOPIK 6", WordFilterGroup.TOPIK),
+    
+    // Chủ đề đời sống thiết thực
+    THEME_DAILY("🏠 Đời sống", WordFilterGroup.THEME),
+    THEME_FOOD("🍜 Ẩm thực", WordFilterGroup.THEME),
+    THEME_WORK("💼 Công sở", WordFilterGroup.THEME),
+    THEME_EDUCATION("🎓 Trường học", WordFilterGroup.THEME),
+    THEME_TRAVEL("✈️ Du lịch", WordFilterGroup.THEME),
+    THEME_SHOPPING("🛍️ Mua sắm", WordFilterGroup.THEME),
+    THEME_HEALTH("🏥 Sức khỏe", WordFilterGroup.THEME),
+    THEME_EMOTION("❤️ Cảm xúc", WordFilterGroup.THEME),
+    
+    // Từ loại & Đặc biệt
+    VERB("Động từ", WordFilterGroup.PART_OF_SPEECH),
+    ADJECTIVE("Tính từ", WordFilterGroup.PART_OF_SPEECH),
+    NOUN("Danh từ", WordFilterGroup.PART_OF_SPEECH),
+    HIGH_FREQ("⭐ Tần suất cao", WordFilterGroup.PART_OF_SPEECH)
+}
+
+enum class FlashcardFilterGroup(val label: String) {
+    STUDY("Ôn tập"),
+    TOPIK("Cấp độ TOPIK (1-6)"),
+    THEME("Chủ đề đời sống")
+}
+
+enum class FlashcardFilter(val label: String, val group: FlashcardFilterGroup = FlashcardFilterGroup.STUDY) {
+    ALL("Tất cả", FlashcardFilterGroup.STUDY),
+    FAVORITES("Yêu thích", FlashcardFilterGroup.STUDY),
+    NEED_REVIEW("Cần ôn tập", FlashcardFilterGroup.STUDY),
+
+    // Cấp độ TOPIK 1-6
+    TOPIK_1("TOPIK 1", FlashcardFilterGroup.TOPIK),
+    TOPIK_2("TOPIK 2", FlashcardFilterGroup.TOPIK),
+    TOPIK_3("TOPIK 3", FlashcardFilterGroup.TOPIK),
+    TOPIK_4("TOPIK 4", FlashcardFilterGroup.TOPIK),
+    TOPIK_5("TOPIK 5", FlashcardFilterGroup.TOPIK),
+    TOPIK_6("TOPIK 6", FlashcardFilterGroup.TOPIK),
+
+    // Chủ đề đời sống
+    THEME_DAILY("🏠 Đời sống", FlashcardFilterGroup.THEME),
+    THEME_FOOD("🍜 Ẩm thực", FlashcardFilterGroup.THEME),
+    THEME_WORK("💼 Công sở", FlashcardFilterGroup.THEME),
+    THEME_EDUCATION("🎓 Trường học", FlashcardFilterGroup.THEME),
+    THEME_TRAVEL("✈️ Du lịch", FlashcardFilterGroup.THEME),
+    THEME_SHOPPING("🛍️ Mua sắm", FlashcardFilterGroup.THEME),
+    THEME_HEALTH("🏥 Sức khỏe", FlashcardFilterGroup.THEME),
+    THEME_EMOTION("❤️ Cảm xúc", FlashcardFilterGroup.THEME)
 }
 
 data class ChatMessageUi(
@@ -102,12 +149,24 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                 val list = KoreanVietnameseSearchMatcher.searchAndRank(words, query)
                 when (filter) {
                     WordFilter.ALL -> list
+                    WordFilter.TOPIK_1 -> list.filter { it.word.topikLevelNumber == 1 }
+                    WordFilter.TOPIK_2 -> list.filter { it.word.topikLevelNumber == 2 }
+                    WordFilter.TOPIK_3 -> list.filter { it.word.topikLevelNumber == 3 }
+                    WordFilter.TOPIK_4 -> list.filter { it.word.topikLevelNumber == 4 }
+                    WordFilter.TOPIK_5 -> list.filter { it.word.topikLevelNumber == 5 }
+                    WordFilter.TOPIK_6 -> list.filter { it.word.topikLevelNumber == 6 }
+                    WordFilter.THEME_DAILY -> list.filter { WordThemeClassifier.matchesDaily(it.word) }
+                    WordFilter.THEME_FOOD -> list.filter { WordThemeClassifier.matchesFood(it.word) }
+                    WordFilter.THEME_WORK -> list.filter { WordThemeClassifier.matchesWork(it.word) }
+                    WordFilter.THEME_EDUCATION -> list.filter { WordThemeClassifier.matchesEducation(it.word) }
+                    WordFilter.THEME_TRAVEL -> list.filter { WordThemeClassifier.matchesTravel(it.word) }
+                    WordFilter.THEME_SHOPPING -> list.filter { WordThemeClassifier.matchesShopping(it.word) }
+                    WordFilter.THEME_HEALTH -> list.filter { WordThemeClassifier.matchesHealth(it.word) }
+                    WordFilter.THEME_EMOTION -> list.filter { WordThemeClassifier.matchesEmotion(it.word) }
                     WordFilter.VERB -> list.filter { it.word.partOfSpeech.contains("Động từ", ignoreCase = true) }
                     WordFilter.ADJECTIVE -> list.filter { it.word.partOfSpeech.contains("Tính từ", ignoreCase = true) }
                     WordFilter.NOUN -> list.filter { it.word.partOfSpeech.contains("Danh từ", ignoreCase = true) }
-                    WordFilter.TOPIK_1 -> list.filter { it.word.level.contains("TOPIK I", ignoreCase = true) }
-                    WordFilter.TOPIK_2 -> list.filter { it.word.level.contains("TOPIK II", ignoreCase = true) }
-                    WordFilter.HIGH_FREQ -> list.filter { it.word.examFrequency.contains("★★★★★") }
+                    WordFilter.HIGH_FREQ -> list.filter { it.word.examFrequency.contains("★★★★★") || it.word.examFrequency.contains("Rất cao") }
                 }
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -170,8 +229,20 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
             FlashcardFilter.ALL -> all
             FlashcardFilter.FAVORITES -> favs
             FlashcardFilter.NEED_REVIEW -> all.filter { !it.isMastered }
-            FlashcardFilter.TOPIK_1 -> all.filter { it.level.contains("TOPIK I") }
-            FlashcardFilter.TOPIK_2 -> all.filter { it.level.contains("TOPIK II") }
+            FlashcardFilter.TOPIK_1 -> all.filter { it.topikLevelNumber == 1 }
+            FlashcardFilter.TOPIK_2 -> all.filter { it.topikLevelNumber == 2 }
+            FlashcardFilter.TOPIK_3 -> all.filter { it.topikLevelNumber == 3 }
+            FlashcardFilter.TOPIK_4 -> all.filter { it.topikLevelNumber == 4 }
+            FlashcardFilter.TOPIK_5 -> all.filter { it.topikLevelNumber == 5 }
+            FlashcardFilter.TOPIK_6 -> all.filter { it.topikLevelNumber == 6 }
+            FlashcardFilter.THEME_DAILY -> all.filter { WordThemeClassifier.matchesDaily(it) }
+            FlashcardFilter.THEME_FOOD -> all.filter { WordThemeClassifier.matchesFood(it) }
+            FlashcardFilter.THEME_WORK -> all.filter { WordThemeClassifier.matchesWork(it) }
+            FlashcardFilter.THEME_EDUCATION -> all.filter { WordThemeClassifier.matchesEducation(it) }
+            FlashcardFilter.THEME_TRAVEL -> all.filter { WordThemeClassifier.matchesTravel(it) }
+            FlashcardFilter.THEME_SHOPPING -> all.filter { WordThemeClassifier.matchesShopping(it) }
+            FlashcardFilter.THEME_HEALTH -> all.filter { WordThemeClassifier.matchesHealth(it) }
+            FlashcardFilter.THEME_EMOTION -> all.filter { WordThemeClassifier.matchesEmotion(it) }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

@@ -7,9 +7,15 @@ import com.example.ai.tier1.Tier2ExecutionMode
 import com.example.ai.tier1.UserIntent
 import com.example.ai.tier2.LocalTier2InferenceEngine
 import com.example.data.initial.PreloadedWords
+import com.example.data.model.WordEntity
 import com.example.util.HanjaHanVietEngine
 import com.example.util.KoreanVietnameseSearchMatcher
+import com.example.util.WordThemeClassifier
 import com.example.ui.components.parseMarkdownInline
+import com.example.ui.components.parseMarkdownToBlocks
+import com.example.ui.components.MarkdownBlock
+import com.example.ui.viewmodel.WordFilter
+import com.example.ui.viewmodel.FlashcardFilter
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import org.junit.Assert.*
@@ -283,5 +289,119 @@ class ExampleUnitTest {
         assertTrue("Span styles should not be empty", parsed.spanStyles.isNotEmpty())
         assertTrue("Should contain bold style", parsed.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
         assertTrue("Should contain italic style", parsed.spanStyles.any { it.item.fontStyle == FontStyle.Italic })
+    }
+
+    @Test
+    fun `word theme classifier identifies everyday life topics accurately`() {
+        val dailyWord = WordEntity(
+            korean = "가족",
+            vietnamese = "Gia đình, người thân",
+            pronunciation = "[ga-jok]",
+            partOfSpeech = "Danh từ"
+        )
+        assertTrue("Should match daily theme", WordThemeClassifier.matchesDaily(dailyWord))
+
+        val foodWord = WordEntity(
+            korean = "밥을 먹다",
+            vietnamese = "Ăn cơm, dùng bữa",
+            pronunciation = "[ba-beul meok-da]",
+            partOfSpeech = "Động từ"
+        )
+        assertTrue("Should match food theme", WordThemeClassifier.matchesFood(foodWord))
+
+        val workWord = WordEntity(
+            korean = "출근하다",
+            vietnamese = "Đi làm, đến văn phòng công ty",
+            pronunciation = "[chul-geun-ha-da]",
+            partOfSpeech = "Động từ"
+        )
+        assertTrue("Should match work theme", WordThemeClassifier.matchesWork(workWord))
+
+        val eduWord = WordEntity(
+            korean = "대학교",
+            vietnamese = "Trường đại học",
+            pronunciation = "[dae-hak-gyo]",
+            partOfSpeech = "Danh từ"
+        )
+        assertTrue("Should match education theme", WordThemeClassifier.matchesEducation(eduWord))
+
+        val travelWord = WordEntity(
+            korean = "비행기",
+            vietnamese = "Máy bay du lịch",
+            pronunciation = "[bi-haeng-gi]",
+            partOfSpeech = "Danh từ"
+        )
+        assertTrue("Should match travel theme", WordThemeClassifier.matchesTravel(travelWord))
+
+        val shopWord = WordEntity(
+            korean = "시장",
+            vietnamese = "Chợ, nơi mua bán đồ",
+            pronunciation = "[si-jang]",
+            partOfSpeech = "Danh từ"
+        )
+        assertTrue("Should match shopping theme", WordThemeClassifier.matchesShopping(shopWord))
+
+        val healthWord = WordEntity(
+            korean = "병원",
+            vietnamese = "Bệnh viện, nơi bác sĩ khám bệnh",
+            pronunciation = "[byeong-won]",
+            partOfSpeech = "Danh từ"
+        )
+        assertTrue("Should match health theme", WordThemeClassifier.matchesHealth(healthWord))
+
+        val emotionWord = WordEntity(
+            korean = "행복하다",
+            vietnamese = "Hạnh phúc, vui sướng",
+            pronunciation = "[haeng-bok-ha-da]",
+            partOfSpeech = "Tính từ"
+        )
+        assertTrue("Should match emotion theme", WordThemeClassifier.matchesEmotion(emotionWord))
+    }
+
+    @Test
+    fun `topik level filtering supports all levels 1 to 6`() {
+        val testWords = (1..6).map { levelNum ->
+            WordEntity(
+                korean = "단어$levelNum",
+                vietnamese = "Từ vựng cấp $levelNum",
+                pronunciation = "[dan-eo]",
+                partOfSpeech = "Danh từ",
+                topikLevelNumber = levelNum
+            )
+        }
+
+        assertEquals(1, testWords.filter { it.topikLevelNumber == 1 }.size)
+        assertEquals(1, testWords.filter { it.topikLevelNumber == 2 }.size)
+        assertEquals(1, testWords.filter { it.topikLevelNumber == 3 }.size)
+        assertEquals(1, testWords.filter { it.topikLevelNumber == 4 }.size)
+        assertEquals(1, testWords.filter { it.topikLevelNumber == 5 }.size)
+        assertEquals(1, testWords.filter { it.topikLevelNumber == 6 }.size)
+
+        assertEquals("TOPIK 1", WordFilter.TOPIK_1.label)
+        assertEquals("TOPIK 6", WordFilter.TOPIK_6.label)
+        assertEquals("TOPIK 1", FlashcardFilter.TOPIK_1.label)
+        assertEquals("TOPIK 6", FlashcardFilter.TOPIK_6.label)
+    }
+
+    @Test
+    fun `markdown block parser structures headings quotes and lists`() {
+        val markdown = """
+            # Tiêu đề 1
+            ## Tiêu đề 2
+            > Đây là trích dẫn ghi chú
+            • Gạch đầu dòng thứ nhất
+            1. Mục đánh số 1
+            ---
+            Đoạn văn bình thường.
+        """.trimIndent()
+
+        val blocks = parseMarkdownToBlocks(markdown)
+        assertTrue(blocks.any { it is MarkdownBlock.Heading && it.level == 1 && it.text == "Tiêu đề 1" })
+        assertTrue(blocks.any { it is MarkdownBlock.Heading && it.level == 2 && it.text == "Tiêu đề 2" })
+        assertTrue(blocks.any { it is MarkdownBlock.Quote && it.text == "Đây là trích dẫn ghi chú" })
+        assertTrue(blocks.any { it is MarkdownBlock.BulletItem && it.text == "Gạch đầu dòng thứ nhất" })
+        assertTrue(blocks.any { it is MarkdownBlock.NumberedItem && it.prefix == "1." && it.text == "Mục đánh số 1" })
+        assertTrue(blocks.any { it is MarkdownBlock.Divider })
+        assertTrue(blocks.any { it is MarkdownBlock.Paragraph && it.text == "Đoạn văn bình thường." })
     }
 }

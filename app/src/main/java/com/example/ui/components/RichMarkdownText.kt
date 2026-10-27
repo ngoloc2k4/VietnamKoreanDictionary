@@ -18,18 +18,88 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+sealed class MarkdownBlock {
+    data class Heading(val level: Int, val text: String) : MarkdownBlock()
+    data class BulletItem(val text: String, val indentDp: Dp) : MarkdownBlock()
+    data class NumberedItem(val prefix: String, val text: String) : MarkdownBlock()
+    data class Quote(val text: String) : MarkdownBlock()
+    object Divider : MarkdownBlock()
+    object EmptyLine : MarkdownBlock()
+    data class Paragraph(val text: String) : MarkdownBlock()
+}
+
+/**
+ * Phân tích cấu trúc khối Markdown trước khi vẽ giao diện (tránh lỗi Composable context)
+ */
+fun parseMarkdownToBlocks(markdown: String): List<MarkdownBlock> {
+    val blocks = mutableListOf<MarkdownBlock>()
+    val lines = markdown.split("\n")
+    val currentQuoteLines = mutableListOf<String>()
+
+    fun flushQuote() {
+        if (currentQuoteLines.isNotEmpty()) {
+            blocks.add(MarkdownBlock.Quote(currentQuoteLines.joinToString("\n")))
+            currentQuoteLines.clear()
+        }
+    }
+
+    for (rawLine in lines) {
+        val line = rawLine.trimEnd()
+        val trimmed = line.trimStart()
+
+        if (trimmed.startsWith(">")) {
+            currentQuoteLines.add(trimmed.removePrefix(">").trimStart())
+            continue
+        } else if (currentQuoteLines.isNotEmpty()) {
+            flushQuote()
+        }
+
+        when {
+            trimmed.isEmpty() -> {
+                blocks.add(MarkdownBlock.EmptyLine)
+            }
+            trimmed == "---" || trimmed == "***" || trimmed == "___" -> {
+                blocks.add(MarkdownBlock.Divider)
+            }
+            trimmed.startsWith("# ") -> {
+                blocks.add(MarkdownBlock.Heading(1, trimmed.removePrefix("# ").trim()))
+            }
+            trimmed.startsWith("## ") -> {
+                blocks.add(MarkdownBlock.Heading(2, trimmed.removePrefix("## ").trim()))
+            }
+            trimmed.startsWith("### ") -> {
+                blocks.add(MarkdownBlock.Heading(3, trimmed.removePrefix("### ").trim()))
+            }
+            trimmed.startsWith("• ") || trimmed.startsWith("- ") ||
+            (trimmed.startsWith("* ") && !trimmed.startsWith("**")) || trimmed.startsWith("+ ") -> {
+                val itemText = trimmed.substring(2).trim()
+                val indent = (line.length - trimmed.length).coerceAtLeast(0) / 2
+                val indentDp = (indent * 12 + 4).dp
+                blocks.add(MarkdownBlock.BulletItem(itemText, indentDp))
+            }
+            trimmed.matches(Regex("^\\d+\\.\\s.*")) -> {
+                val prefixMatch = Regex("^(\\d+\\.)\\s").find(trimmed)
+                val numPrefix = prefixMatch?.groupValues?.get(1) ?: "•"
+                val itemText = trimmed.substring(numPrefix.length).trim()
+                blocks.add(MarkdownBlock.NumberedItem(numPrefix, itemText))
+            }
+            else -> {
+                blocks.add(MarkdownBlock.Paragraph(line))
+            }
+        }
+    }
+
+    flushQuote()
+    return blocks
+}
+
 /**
  * Trình dựng văn bản Markdown phong cách Word:
- * Hỗ trợ chuyển đổi tự động các định dạng Markdown của AI Model thành văn bản giàu định dạng:
- * - Tiêu đề (Headings #, ##, ###) với kích thước và màu sắc phân cấp chuẩn
- * - In đậm (**text**), in nghiêng (*text*), đậm nghiêng (***text***)
- * - Khối mã hoặc phiên âm inline (`code`) dạng pill chuyên nghiệp
- * - Danh sách gạch đầu dòng (•, -, *) và danh sách số (1., 2.) với thụt lề chuẩn
- * - Khối trích dẫn / ghi chú (> quote)
- * - Đường kẻ phân cách (---)
+ * Hiển thị chữ đậm, nghiêng, đậm nghiêng, tiêu đề, danh sách có bullet, code pill, blockquote...
  */
 @Composable
 fun RichMarkdownText(
@@ -39,111 +109,53 @@ fun RichMarkdownText(
     baseTextStyle: TextStyle = MaterialTheme.typography.bodyMedium,
     isUser: Boolean = false
 ) {
-    val lines = markdown.split("\n")
+    val blocks = parseMarkdownToBlocks(markdown)
 
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        var inQuoteBlock = false
-        val currentQuoteLines = mutableListOf<String>()
-
-        fun flushQuote() {
-            if (currentQuoteLines.isNotEmpty()) {
-                val quoteText = currentQuoteLines.joinToString("\n")
-                QuoteBlock(
-                    text = quoteText,
-                    color = color,
-                    baseTextStyle = baseTextStyle,
-                    isUser = isUser
-                )
-                currentQuoteLines.clear()
-            }
-            inQuoteBlock = false
-        }
-
-        for (rawLine in lines) {
-            val line = rawLine.trimEnd()
-            val trimmed = line.trimStart()
-
-            // Blockquote handling
-            if (trimmed.startsWith(">")) {
-                inQuoteBlock = true
-                currentQuoteLines.add(trimmed.removePrefix(">").trimStart())
-                continue
-            } else if (inQuoteBlock) {
-                flushQuote()
-            }
-
-            when {
-                // Empty line / paragraph break
-                trimmed.isEmpty() -> {
+        for (block in blocks) {
+            when (block) {
+                is MarkdownBlock.EmptyLine -> {
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
-                // Horizontal Rule
-                trimmed == "---" || trimmed == "***" || trimmed == "___" -> {
+                is MarkdownBlock.Divider -> {
                     HorizontalDivider(
                         modifier = Modifier.padding(vertical = 4.dp),
                         color = if (isUser) color.copy(alpha = 0.3f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
                     )
                 }
 
-                // Heading 1
-                trimmed.startsWith("# ") -> {
-                    val headingText = trimmed.removePrefix("# ").trim()
+                is MarkdownBlock.Heading -> {
+                    val typography = when (block.level) {
+                        1 -> MaterialTheme.typography.titleLarge
+                        2 -> MaterialTheme.typography.titleMedium
+                        else -> MaterialTheme.typography.titleSmall
+                    }
+                    val headingColor = if (isUser) color else {
+                        if (block.level <= 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
+                    }
                     Text(
-                        text = parseMarkdownInline(headingText, isUser),
-                        style = MaterialTheme.typography.titleLarge.copy(
+                        text = parseMarkdownInline(block.text, isUser),
+                        style = typography.copy(
                             fontWeight = FontWeight.Bold,
-                            color = if (isUser) color else MaterialTheme.colorScheme.primary
-                        ),
-                        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
-                    )
-                }
-
-                // Heading 2
-                trimmed.startsWith("## ") -> {
-                    val headingText = trimmed.removePrefix("## ").trim()
-                    Text(
-                        text = parseMarkdownInline(headingText, isUser),
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = if (isUser) color else MaterialTheme.colorScheme.primary
+                            color = headingColor
                         ),
                         modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
                     )
                 }
 
-                // Heading 3
-                trimmed.startsWith("### ") -> {
-                    val headingText = trimmed.removePrefix("### ").trim()
-                    Text(
-                        text = parseMarkdownInline(headingText, isUser),
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = if (isUser) color else MaterialTheme.colorScheme.secondary
-                        ),
-                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
-                    )
-                }
-
-                // Bullet List (•, -, *, +)
-                trimmed.startsWith("• ") || trimmed.startsWith("- ") ||
-                (trimmed.startsWith("* ") && !trimmed.startsWith("**")) || trimmed.startsWith("+ ") -> {
-                    val bulletMarker = "•"
-                    val itemText = trimmed.substring(2).trim()
-                    val indent = (line.length - trimmed.length).coerceAtLeast(0) / 2
-                    val indentDp = (indent * 12 + 4).dp
-
+                is MarkdownBlock.BulletItem -> {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = indentDp, top = 1.dp, bottom = 1.dp),
+                            .padding(start = block.indentDp, top = 1.dp, bottom = 1.dp),
                         verticalAlignment = Alignment.Top
                     ) {
                         Text(
-                            text = bulletMarker,
+                            text = "•",
                             style = baseTextStyle.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = if (isUser) color else MaterialTheme.colorScheme.primary
@@ -151,7 +163,7 @@ fun RichMarkdownText(
                             modifier = Modifier.padding(end = 6.dp)
                         )
                         Text(
-                            text = parseMarkdownInline(itemText, isUser),
+                            text = parseMarkdownInline(block.text, isUser),
                             style = baseTextStyle.copy(
                                 color = color,
                                 lineHeight = 20.sp
@@ -161,12 +173,7 @@ fun RichMarkdownText(
                     }
                 }
 
-                // Numbered List (1., 2., 3., etc.)
-                trimmed.matches(Regex("^\\d+\\.\\s.*")) -> {
-                    val prefixMatch = Regex("^(\\d+\\.)\\s").find(trimmed)
-                    val numPrefix = prefixMatch?.groupValues?.get(1) ?: "•"
-                    val itemText = trimmed.substring(numPrefix.length).trim()
-
+                is MarkdownBlock.NumberedItem -> {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -174,7 +181,7 @@ fun RichMarkdownText(
                         verticalAlignment = Alignment.Top
                     ) {
                         Text(
-                            text = numPrefix,
+                            text = block.prefix,
                             style = baseTextStyle.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = if (isUser) color else MaterialTheme.colorScheme.primary
@@ -182,7 +189,7 @@ fun RichMarkdownText(
                             modifier = Modifier.padding(end = 6.dp)
                         )
                         Text(
-                            text = parseMarkdownInline(itemText, isUser),
+                            text = parseMarkdownInline(block.text, isUser),
                             style = baseTextStyle.copy(
                                 color = color,
                                 lineHeight = 20.sp
@@ -192,10 +199,41 @@ fun RichMarkdownText(
                     }
                 }
 
-                // Normal paragraph text
-                else -> {
+                is MarkdownBlock.Quote -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .background(
+                                color = if (isUser) Color.White.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .height(24.dp)
+                                .background(
+                                    color = if (isUser) Color.White.copy(alpha = 0.8f) else MaterialTheme.colorScheme.primary,
+                                    shape = RoundedCornerShape(2.dp)
+                                )
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = parseMarkdownInline(block.text, isUser),
+                            style = baseTextStyle.copy(
+                                fontStyle = FontStyle.Italic,
+                                color = color
+                            )
+                        )
+                    }
+                }
+
+                is MarkdownBlock.Paragraph -> {
                     Text(
-                        text = parseMarkdownInline(line, isUser),
+                        text = parseMarkdownInline(block.text, isUser),
                         style = baseTextStyle.copy(
                             color = color,
                             lineHeight = 22.sp
@@ -204,48 +242,6 @@ fun RichMarkdownText(
                 }
             }
         }
-
-        if (inQuoteBlock) {
-            flushQuote()
-        }
-    }
-}
-
-@Composable
-private fun QuoteBlock(
-    text: String,
-    color: Color,
-    baseTextStyle: TextStyle,
-    isUser: Boolean
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .background(
-                color = if (isUser) Color.White.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                shape = RoundedCornerShape(8.dp)
-            )
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .width(3.dp)
-                .height(24.dp)
-                .background(
-                    color = if (isUser) Color.White.copy(alpha = 0.8f) else MaterialTheme.colorScheme.primary,
-                    shape = RoundedCornerShape(2.dp)
-                )
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = parseMarkdownInline(text, isUser),
-            style = baseTextStyle.copy(
-                fontStyle = FontStyle.Italic,
-                color = color
-            )
-        )
     }
 }
 
@@ -253,6 +249,7 @@ private fun QuoteBlock(
  * Phân tích các cú pháp Markdown nội dòng:
  * - ***đậm nghiêng***
  * - **đậm**
+ * - __đậm__
  * - *nghiêng*
  * - `mã/phiên âm`
  */
