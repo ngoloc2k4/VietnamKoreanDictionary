@@ -60,15 +60,19 @@ jobs:
       - name: Decode Signing Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASS: ${{ secrets.STORE_PASSWORD || 'vietkor2026SecureReleasePass!' }}
+          ALIAS: ${{ secrets.KEY_ALIAS || 'vietkor-key' }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
-            echo "Decoded keystore from GitHub Secrets."
+            echo "$KEYSTORE_BASE64" | base64 -d > release-keystore.jks
+            echo "✓ Decoded signing keystore from GitHub Secrets."
           else
-            echo "Generating fallback signing keystore..."
-            keytool -genkeypair -v -keystore release-keystore.jks -alias vietkor-key -keyalg RSA -keysize 2048 -validity 10000 -storepass "vietkor2026SecureReleasePass!" -keypass "vietkor2026SecureReleasePass!" -dname "CN=VietKorDictionary, OU=Dev, O=VietKor, L=Hanoi, ST=Hanoi, C=VN"
+            echo "::error::KEYSTORE_BASE64 secret is not set! Aborting to prevent inconsistent random signing."
+            exit 1
           fi
           ls -lh release-keystore.jks
+          echo "Keystore Certificate Details:"
+          keytool -list -v -keystore release-keystore.jks -storepass "$STORE_PASS" -alias "$ALIAS" | grep -E "(Alias name|Valid from|SHA256:)" || true
 
       # 2. Run Unit Tests BEFORE building APK
       - name: Run Unit Tests
@@ -100,17 +104,26 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      # 5. Prepare Standardized APK
+      # 5. Prepare Standardized APK & Verify Signature
       - name: Prepare Standardized APK
         run: |
           if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
             cp app/build/outputs/apk/release/app-release.apk VietnamKoreanDictionary.apk
-          elif [ -f "app/build/outputs/apk/release/app-release-unsigned.apk" ]; then
-            cp app/build/outputs/apk/release/app-release-unsigned.apk VietnamKoreanDictionary.apk
-          else
+            echo "Selected signed release APK."
+          elif [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
             cp app/build/outputs/apk/debug/app-debug.apk VietnamKoreanDictionary.apk
+            echo "Selected signed debug APK."
+          else
+            echo "::error::No valid APK found!"
+            exit 1
           fi
           ls -lh VietnamKoreanDictionary.apk
+          # Verify APK signing certificate
+          APKSIGNER=$(find $ANDROID_HOME/build-tools/ -name apksigner 2>/dev/null | sort -V | tail -n 1)
+          if [ -n "$APKSIGNER" ] && [ -x "$APKSIGNER" ]; then
+            echo "Verifying APK signature with $APKSIGNER:"
+            $APKSIGNER verify --print-certs VietnamKoreanDictionary.apk | grep -E "(Signer #|SHA-256)" || true
+          fi
 
       # 6. Publish / Overwrite Beta Release with VietnamKoreanDictionary.apk
       - name: Publish Beta Release

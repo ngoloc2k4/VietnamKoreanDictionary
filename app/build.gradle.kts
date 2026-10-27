@@ -33,6 +33,8 @@ android {
         storePassword = System.getenv("STORE_PASSWORD") ?: "vietkor2026SecureReleasePass!"
         keyAlias = System.getenv("KEY_ALIAS") ?: "vietkor-key"
         keyPassword = System.getenv("KEY_PASSWORD") ?: "vietkor2026SecureReleasePass!"
+        enableV1Signing = true
+        enableV2Signing = true
       }
     }
     create("debugConfig") {
@@ -43,6 +45,8 @@ android {
         storePassword = System.getenv("STORE_PASSWORD") ?: "vietkor2026SecureReleasePass!"
         keyAlias = System.getenv("KEY_ALIAS") ?: "vietkor-key"
         keyPassword = System.getenv("KEY_PASSWORD") ?: "vietkor2026SecureReleasePass!"
+        enableV1Signing = true
+        enableV2Signing = true
       }
     }
   }
