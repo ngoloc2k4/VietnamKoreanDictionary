@@ -91,8 +91,7 @@ object LocalTier2InferenceEngine {
             tier = 2
         )
         val request = UnifiedAiRequest(
-            messages = listOf(com.example.ai.gateway.UnifiedAiMessage(role = "user", content = query)),
-            model = modelFileName
+            messages = listOf(com.example.ai.gateway.UnifiedAiMessage(role = "user", content = query))
         )
         return executeOfflineInference(request, modelInfo, localWords)
     }
