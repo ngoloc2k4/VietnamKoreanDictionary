@@ -76,7 +76,29 @@ fun AiProviderSettingsSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Tier 2 Online Cloud architecture note
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(imageVector = Icons.Default.Cloud, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Tầng 2 hoạt động 100% Trực Tuyến (Online Cloud) với các mô hình cấp cao (Llama-3.3-70B, Claude, GPT, Gemini). Các mô hình nhúng cục bộ được quản lý độc lập tại Tầng 1 (Cài đặt bộ nhớ).",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Test status if any
             testResultText?.let { res ->

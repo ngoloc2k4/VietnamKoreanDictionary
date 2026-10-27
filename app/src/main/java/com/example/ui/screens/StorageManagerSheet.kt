@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -16,9 +18,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ai.tier1.*
 import com.example.ui.viewmodel.DictionaryViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,6 +40,23 @@ fun StorageManagerSheet(
     val ttsSpeed by viewModel.ttsSpeed.collectAsState()
     val isDebugRunning by viewModel.isDebugServerRunning.collectAsState()
     val debugUrl by viewModel.debugServerUrl.collectAsState()
+
+    val downloadedModels by viewModel.downloadedModels.collectAsState()
+    val activeLocalModel by viewModel.activeLocalModel.collectAsState()
+    val downloadState by viewModel.modelDownloadState.collectAsState()
+    var showCustomUrlDialog by remember { mutableStateOf(false) }
+    var customUrlText by remember { mutableStateOf("") }
+    var customNameText by remember { mutableStateOf("") }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val fileName = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "imported_model.gguf"
+            viewModel.importLocalModel(uri, fileName)
+            Toast.makeText(context, "Đang nạp mô hình từ bộ nhớ...", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -259,7 +277,290 @@ fun StorageManagerSheet(
             }
 
             // ==========================================
-            // 3. STORAGE BUDGET BREAKDOWN (<500MB)
+            // 3. ON-DEVICE AI MODELS (TIER 1 EMBEDDED)
+            // ==========================================
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Memory,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Mô Hình AI Nhúng Tầng 1 (On-Device)",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Chọn hoặc tải mô hình GGUF từ Hugging Face Hub, hoặc nhập file từ bộ nhớ máy để chạy AI cục bộ tối ưu hóa câu lệnh & Local RAG.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    // Active model status banner
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (activeLocalModel != null) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                               else MaterialTheme.colorScheme.surface,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (activeLocalModel != null) "● Mô hình đang chạy on-device:"
+                                           else "● Đang sử dụng chế độ:",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (activeLocalModel != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = activeLocalModel?.name ?: "Heuristic Siêu Nhẹ (0MB, tiết kiệm RAM)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            if (activeLocalModel != null) {
+                                TextButton(onClick = { viewModel.setActiveLocalModel(null) }) {
+                                    Text("Tắt (Heuristic)", fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    // Download progress indicator if currently downloading
+                    when (val state = downloadState) {
+                        is DownloadState.Downloading -> {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Đang tải mô hình: ${state.downloadedMb} MB / ${state.totalMb} MB",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "${(state.progress * 100).toInt()}%",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    LinearProgressIndicator(
+                                        progress = { state.progress },
+                                        modifier = Modifier.fillMaxWidth().height(6.dp)
+                                    )
+                                    OutlinedButton(
+                                        onClick = { viewModel.cancelModelDownload() },
+                                        modifier = Modifier.align(Alignment.End),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("Hủy tải", fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        }
+                        is DownloadState.Failed -> {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Tải thất bại: ${state.error}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    TextButton(onClick = { viewModel.resetModelDownloadState() }) {
+                                        Text("Đóng", fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        }
+                        else -> {}
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+
+                    Text(
+                        text = "Danh sách Model Presets (Hugging Face Hub):",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    // Presets
+                    AiModelManager.PRESET_MODELS.forEach { preset ->
+                        val downloaded = downloadedModels.firstOrNull { it.fileName == preset.fileName }
+                        val isDownloading = (downloadState as? DownloadState.Downloading)?.modelId == preset.id
+                        val isActive = downloaded?.isActive == true
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = preset.name,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            if (preset.isRecommended) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = MaterialTheme.colorScheme.primaryContainer
+                                                ) {
+                                                    Text(
+                                                        text = "Khuyên dùng",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                        fontSize = 9.sp,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Text(
+                                            text = preset.description,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = if (downloaded != null) "Đã lưu (${downloaded.sizeMb} MB)"
+                                               else "~${preset.approximateSizeMb.toInt()} MB",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        if (downloaded != null) {
+                                            if (!isActive) {
+                                                OutlinedButton(
+                                                    onClick = { viewModel.setActiveLocalModel(downloaded.fileName) },
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text("Kích hoạt", fontSize = 11.sp)
+                                                }
+                                            } else {
+                                                Button(
+                                                    onClick = {},
+                                                    enabled = false,
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text("Đang dùng", fontSize = 11.sp)
+                                                }
+                                            }
+                                            IconButton(
+                                                onClick = { viewModel.deleteLocalModel(downloaded.fileName) },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.DeleteOutline,
+                                                    contentDescription = "Xóa",
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        } else {
+                                            Button(
+                                                onClick = { viewModel.downloadModelPreset(preset) },
+                                                enabled = !isDownloading,
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                            ) {
+                                                Icon(imageVector = Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Tải về", fontSize = 11.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Custom model actions (Import from phone storage or enter direct HuggingFace URL)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { filePickerLauncher.launch("*/*") },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Chọn từ máy (.gguf)", fontSize = 11.sp)
+                        }
+
+                        OutlinedButton(
+                            onClick = { showCustomUrlDialog = true },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Link, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Nhập URL HuggingFace", fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // 4. STORAGE BUDGET BREAKDOWN (<500MB)
             // ==========================================
             Card(
                 shape = RoundedCornerShape(16.dp),
@@ -309,6 +610,13 @@ fun StorageManagerSheet(
                     )
 
                     StorageRowItem(
+                        label = "Mô hình AI nhúng (Tầng 1)",
+                        size = "${report.modelsMb} MB",
+                        note = if (report.modelsMb > 0) "Mô hình on-device lưu trong files/models/"
+                               else "Chưa tải (0 MB - Đang dùng Heuristic)"
+                    )
+
+                    StorageRowItem(
                         label = "Bộ nhớ đệm & Lịch sử tra cứu",
                         size = "${report.cacheMb} MB",
                         note = "Tự động dọn dẹp theo chính sách an toàn"
@@ -350,6 +658,58 @@ fun StorageManagerSheet(
                 }
             }
         }
+    }
+
+    if (showCustomUrlDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomUrlDialog = false },
+            title = { Text("Nhập URL Mô Hình Tùy Chỉnh") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Dán link tải trực tiếp file .gguf hoặc .bin (ví dụ từ Hugging Face resolve/main):",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = customUrlText,
+                        onValueChange = { customUrlText = it },
+                        label = { Text("URL tải về") },
+                        placeholder = { Text("https://huggingface.co/.../model.gguf") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = customNameText,
+                        onValueChange = { customNameText = it },
+                        label = { Text("Tên tệp lưu trữ") },
+                        placeholder = { Text("custom_model.gguf") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (customUrlText.isNotBlank()) {
+                            val fileName = customNameText.ifBlank { "custom_model_${System.currentTimeMillis()}.gguf" }
+                            viewModel.downloadCustomModel(customUrlText.trim(), fileName.trim())
+                            showCustomUrlDialog = false
+                            customUrlText = ""
+                            customNameText = ""
+                            Toast.makeText(context, "Bắt đầu tải mô hình tùy chỉnh...", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Text("Bắt đầu tải")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomUrlDialog = false }) {
+                    Text("Hủy")
+                }
+            }
+        )
     }
 }
 

@@ -138,4 +138,46 @@ class ExampleUnitTest {
         val afterClear = com.example.util.AppLogManager.getLogs()
         assertTrue("Logs should be reset", afterClear.size <= 2)
     }
+
+    @Test
+    fun `ai model manager presets have valid URLs and respect FLOSS 150MB budget`() {
+        val presets = com.example.ai.tier1.AiModelManager.PRESET_MODELS
+        assertTrue("Should have at least 2 model presets", presets.size >= 2)
+
+        val smollm4 = presets.first { it.id == "smollm2_135m_q4" }
+        assertTrue("SmolLM2 Q4 should be recommended", smollm4.isRecommended)
+        assertTrue("SmolLM2 Q4 must be <= 120MB for budget", smollm4.approximateSizeMb <= 120.0)
+        assertTrue("Must be from Hugging Face resolve", smollm4.downloadUrl.contains("huggingface.co"))
+        assertTrue("Must be GGUF file format", smollm4.fileName.endsWith(".gguf"))
+
+        val embedding = presets.first { it.id == "minilm_l6_v2_embedding" }
+        assertTrue("Embedding model should be <= 50MB", embedding.approximateSizeMb <= 50.0)
+        assertEquals("EMBEDDING", embedding.tag)
+    }
+
+    @Test
+    fun `local ai middleman integrates active on-device model into tier 1 decision`() {
+        // Query requiring cloud Tier 2, but with active local model on Tier 1
+        val decisionWithModel = LocalAiMiddleman.processQuery(
+            userQuery = "Phân biệt giúp tôi ngữ pháp -아/어서 và -(으)니까",
+            localWords = words,
+            activeModelName = "smollm2-135m-instruct-q4_k_m.gguf"
+        )
+
+        assertFalse(decisionWithModel.canHandleOffline)
+        assertTrue(decisionWithModel.isLocalModelActive)
+        assertEquals("smollm2-135m-instruct-q4_k_m.gguf", decisionWithModel.activeModelName)
+        assertNotNull(decisionWithModel.optimizedRequest)
+        val systemPrompt = decisionWithModel.optimizedRequest!!.messages.first { it.role == "system" }.content
+        assertTrue("System prompt should mention active on-device model", systemPrompt.contains("smollm2-135m-instruct-q4_k_m.gguf"))
+
+        // Query with heuristic fallback (activeModelName = null)
+        val decisionHeuristic = LocalAiMiddleman.processQuery(
+            userQuery = "Phân biệt giúp tôi ngữ pháp -아/어서 và -(으)니까",
+            localWords = words,
+            activeModelName = null
+        )
+        assertFalse(decisionHeuristic.isLocalModelActive)
+        assertNull(decisionHeuristic.activeModelName)
+    }
 }

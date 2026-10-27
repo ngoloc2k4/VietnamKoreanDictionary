@@ -1,10 +1,11 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ai.gateway.*
-import com.example.ai.tier1.LocalAiMiddleman
+import com.example.ai.tier1.*
 import com.example.data.model.SearchHistoryEntity
 import com.example.data.model.TranslationHistoryEntity
 import com.example.data.model.WordEntity
@@ -232,8 +233,13 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                     UnifiedAiMessage(it.role, it.content)
                 }
 
-                // TIER 1: Embedded AI Middleman processing
-                val decision = LocalAiMiddleman.processQuery(trimmed, localCandidates, history)
+                // TIER 1: Embedded AI Middleman processing (uses active on-device model if downloaded, else heuristic)
+                val decision = LocalAiMiddleman.processQuery(
+                    userQuery = trimmed,
+                    localWords = localCandidates,
+                    chatHistory = history,
+                    activeModelName = _activeLocalModel.value?.name
+                )
 
                 if (decision.canHandleOffline && decision.offlineAnswer != null) {
                     // Handled 100% locally: Zero tokens, instant response!
@@ -317,6 +323,64 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     // ==========================================
     private val _storageReport = MutableStateFlow(StorageManager.getStorageReport(application))
     val storageReport = _storageReport.asStateFlow()
+
+    // ==========================================
+    // ON-DEVICE LOCAL AI MODELS (TIER 1)
+    // ==========================================
+    private val _downloadedModels = MutableStateFlow<List<LocalModelInfo>>(AiModelManager.getDownloadedModels(application))
+    val downloadedModels = _downloadedModels.asStateFlow()
+
+    private val _activeLocalModel = MutableStateFlow<LocalModelInfo?>(AiModelManager.getActiveModel(application))
+    val activeLocalModel = _activeLocalModel.asStateFlow()
+
+    val modelDownloadState: StateFlow<DownloadState> = AiModelManager.downloadState
+
+    fun refreshDownloadedModels() {
+        val app = getApplication<Application>()
+        _downloadedModels.value = AiModelManager.getDownloadedModels(app)
+        _activeLocalModel.value = AiModelManager.getActiveModel(app)
+        refreshStorageReport()
+    }
+
+    fun downloadModelPreset(preset: ModelPreset) {
+        viewModelScope.launch {
+            AiModelManager.downloadPreset(getApplication(), preset)
+            refreshDownloadedModels()
+        }
+    }
+
+    fun downloadCustomModel(url: String, fileName: String) {
+        viewModelScope.launch {
+            AiModelManager.downloadCustomUrl(getApplication(), url, fileName)
+            refreshDownloadedModels()
+        }
+    }
+
+    fun cancelModelDownload() {
+        AiModelManager.cancelDownload()
+    }
+
+    fun resetModelDownloadState() {
+        AiModelManager.resetDownloadState()
+    }
+
+    fun deleteLocalModel(fileName: String) {
+        AiModelManager.deleteModel(getApplication(), fileName)
+        refreshDownloadedModels()
+    }
+
+    fun setActiveLocalModel(fileName: String?) {
+        val app = getApplication<Application>()
+        AiModelManager.setActiveModel(app, fileName)
+        refreshDownloadedModels()
+    }
+
+    fun importLocalModel(uri: Uri, name: String) {
+        viewModelScope.launch {
+            AiModelManager.importFromUri(getApplication(), uri, name)
+            refreshDownloadedModels()
+        }
+    }
 
     fun refreshStorageReport() {
         _storageReport.value = StorageManager.getStorageReport(getApplication())

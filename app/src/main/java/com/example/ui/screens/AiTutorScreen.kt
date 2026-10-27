@@ -49,9 +49,11 @@ fun AiTutorScreen(
     val chatMessages by viewModel.aiChatMessages.collectAsState()
     val isThinking by viewModel.isAiThinking.collectAsState()
     val providers by viewModel.aiProviders.collectAsState()
+    val activeLocalModel by viewModel.activeLocalModel.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
     var showSettingsSheet by remember { mutableStateOf(false) }
+    var showStorageSheet by remember { mutableStateOf(false) }
     var selectedDebugResponse by remember { mutableStateOf<UnifiedAiResponse?>(null) }
 
     val defaultProvider = providers.firstOrNull { it.isDefault } ?: providers.firstOrNull()
@@ -99,18 +101,21 @@ fun AiTutorScreen(
                 }
 
                 Text(
-                    text = "Provider: ${defaultProvider?.name ?: "Chưa chọn"}",
+                    text = "Tầng 1 (Local): ${activeLocalModel?.name ?: "Heuristic 0MB"} • Tầng 2: ${defaultProvider?.name ?: "Chưa chọn"}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             Row {
+                IconButton(onClick = { showStorageSheet = true }) {
+                    Icon(imageVector = Icons.Default.Memory, contentDescription = "Quản lý Model AI Nhúng (Tầng 1)", tint = MaterialTheme.colorScheme.primary)
+                }
                 IconButton(onClick = { viewModel.clearAiChat() }) {
                     Icon(imageVector = Icons.Default.DeleteOutline, contentDescription = "Làm mới hội thoại")
                 }
                 IconButton(onClick = { showSettingsSheet = true }) {
-                    Icon(imageVector = Icons.Outlined.Tune, contentDescription = "Cấu hình AI Provider", tint = MaterialTheme.colorScheme.primary)
+                    Icon(imageVector = Icons.Outlined.Tune, contentDescription = "Cấu hình AI Provider (Tầng 2)", tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -233,11 +238,19 @@ fun AiTutorScreen(
         }
     }
 
-    // AI Provider Settings Sheet
+    // AI Provider Settings Sheet (Tier 2 Cloud Online)
     if (showSettingsSheet) {
         AiProviderSettingsSheet(
             viewModel = viewModel,
             onDismiss = { showSettingsSheet = false }
+        )
+    }
+
+    // Storage & On-Device Model Manager Sheet (Tier 1 Local)
+    if (showStorageSheet) {
+        StorageManagerSheet(
+            viewModel = viewModel,
+            onDismiss = { showStorageSheet = false }
         )
     }
 

@@ -19,7 +19,9 @@ data class Tier1Decision(
     val canHandleOffline: Boolean,
     val offlineAnswer: String? = null,
     val optimizedRequest: UnifiedAiRequest? = null,
-    val localRagContext: String = ""
+    val localRagContext: String = "",
+    val activeModelName: String? = null,
+    val isLocalModelActive: Boolean = false
 )
 
 object LocalAiMiddleman {
@@ -86,7 +88,8 @@ object LocalAiMiddleman {
     fun processQuery(
         userQuery: String,
         localWords: List<WordEntity>,
-        chatHistory: List<UnifiedAiMessage> = emptyList()
+        chatHistory: List<UnifiedAiMessage> = emptyList(),
+        activeModelName: String? = null
     ): Tier1Decision {
         val intent = classifyIntent(userQuery, localWords)
 
@@ -105,6 +108,11 @@ object LocalAiMiddleman {
 
             if (isDirectMatch && match != null && qTrim.split(" ").size <= 2) {
                 val best = match
+                val tier1Note = if (activeModelName != null) {
+                    "Mô hình cục bộ Tầng 1: $activeModelName"
+                } else {
+                    "Tầng 1: Heuristic Siêu Nhẹ (0MB, tiết kiệm RAM)"
+                }
                 val answer = buildString {
                     append("📖 **Tra cứu ngoại tuyến tức thì:**\n\n")
                     append("• **Tiếng Hàn:** ${best.korean} ${best.pronunciation}\n")
@@ -119,21 +127,29 @@ object LocalAiMiddleman {
                     if (best.definition.isNotBlank()) {
                         append("• **Định nghĩa:** ${best.definition}\n")
                     }
-                    append("\n*(Dữ liệu từ kho từ điển ngoại tuyến 78.000 từ - Không tốn token AI)*")
+                    append("\n*($tier1Note • Kho 78.000 từ - Không tốn token)*")
                 }
                 return Tier1Decision(
                     intent = intent,
                     canHandleOffline = true,
-                    offlineAnswer = answer
+                    offlineAnswer = answer,
+                    activeModelName = activeModelName,
+                    isLocalModelActive = activeModelName != null
                 )
             }
         }
 
         // Build Local RAG context to supply to Cloud AI
         val ragContext = buildLocalRagContext(userQuery, localWords)
+        val tier1Label = if (activeModelName != null) {
+            "Mô hình on-device [$activeModelName] (Tối ưu hóa câu lệnh & Local RAG)"
+        } else {
+            "Cơ chế Heuristic Siêu Nhẹ (0MB)"
+        }
 
         val systemPrompt = buildString {
             append("Bạn là 'VietKor AI Tutor' - chuyên gia giảng dạy tiếng Hàn và tiếng Việt cho người học.\n")
+            append("Hệ thống vận hành theo kiến trúc AI 2 Tầng: Tầng 1 đã xử lý bằng $tier1Label.\n")
             append("Triết lý giảng dạy: Ngắn gọn, chuẩn xác ngữ pháp, nhấn mạnh mối liên hệ Hán-Việt và Hán-Hàn (Hanja) để giúp người học ghi nhớ sâu bản chất từ vựng.\n")
             append("Quy tắc định dạng:\n")
             append("1. Trả lời bằng tiếng Việt thân thiện, bố cục rõ ràng với gạch đầu dòng Markdown.\n")
@@ -166,7 +182,9 @@ object LocalAiMiddleman {
             intent = intent,
             canHandleOffline = false,
             optimizedRequest = request,
-            localRagContext = ragContext
+            localRagContext = ragContext,
+            activeModelName = activeModelName,
+            isLocalModelActive = activeModelName != null
         )
     }
 }

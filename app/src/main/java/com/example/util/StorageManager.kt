@@ -1,11 +1,13 @@
 package com.example.util
 
 import android.content.Context
+import com.example.ai.tier1.AiModelManager
 import java.io.File
 
 data class StorageReport(
     val baseAppMb: Double,
     val databaseMb: Double,
+    val modelsMb: Double,
     val cacheMb: Double,
     val totalUsedMb: Double,
     val maxBudgetMb: Double = 500.0,
@@ -39,16 +41,20 @@ object StorageManager {
         }
         val dbMb = dbBytes.toDouble() / (1024 * 1024)
 
+        // On-device AI Models size in files/models/
+        val modelsMb = AiModelManager.getTotalModelsSizeMb(context)
+
         // Cache size
         val cacheBytes = getFolderSize(context.cacheDir)
         val cacheMb = cacheBytes.toDouble() / (1024 * 1024)
 
-        val totalUsedMb = apkMb + dbMb + cacheMb
+        val totalUsedMb = apkMb + dbMb + modelsMb + cacheMb
         val freeBudgetMb = maxOf(0.0, 500.0 - totalUsedMb)
 
         return StorageReport(
             baseAppMb = (apkMb * 10).toInt() / 10.0,
             databaseMb = (dbMb * 10).toInt() / 10.0,
+            modelsMb = modelsMb,
             cacheMb = (cacheMb * 10).toInt() / 10.0,
             totalUsedMb = (totalUsedMb * 10).toInt() / 10.0,
             maxBudgetMb = 500.0,
