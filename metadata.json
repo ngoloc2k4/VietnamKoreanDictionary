@@ -1,0 +1,6 @@
+{
+  "name": "Từ Điển Hàn Việt",
+  "description": "FLOSS Edition: Từ điển ngoại tuyến 78.000 từ, siêu nhẹ (<500MB), Ánh xạ Hán Việt - Hán Hàn, AI Hai Tầng (Local RAG + Multi-Provider Gateway: Groq, DeepSeek, Gemini, Claude, Ollama).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
