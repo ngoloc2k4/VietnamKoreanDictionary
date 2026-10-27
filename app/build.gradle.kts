@@ -27,16 +27,23 @@ android {
   signingConfigs {
     create("release") {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/release-keystore.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD") ?: "vietkor2026SecureReleasePass!"
-      keyAlias = System.getenv("KEY_ALIAS") ?: "vietkor-key"
-      keyPassword = System.getenv("KEY_PASSWORD") ?: "vietkor2026SecureReleasePass!"
+      val kFile = file(keystorePath)
+      if (kFile.exists()) {
+        storeFile = kFile
+        storePassword = System.getenv("STORE_PASSWORD") ?: "vietkor2026SecureReleasePass!"
+        keyAlias = System.getenv("KEY_ALIAS") ?: "vietkor-key"
+        keyPassword = System.getenv("KEY_PASSWORD") ?: "vietkor2026SecureReleasePass!"
+      }
     }
     create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androiddebugkey"
-      keyPassword = "android"
+      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/release-keystore.jks"
+      val kFile = file(keystorePath)
+      if (kFile.exists()) {
+        storeFile = kFile
+        storePassword = System.getenv("STORE_PASSWORD") ?: "vietkor2026SecureReleasePass!"
+        keyAlias = System.getenv("KEY_ALIAS") ?: "vietkor-key"
+        keyPassword = System.getenv("KEY_PASSWORD") ?: "vietkor2026SecureReleasePass!"
+      }
     }
   }
 
@@ -45,14 +52,16 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
-      // AI Studio.
-      signingConfig = signingConfigs.getByName("release")
+      val relSigning = signingConfigs.getByName("release")
+      if (relSigning.storeFile != null && relSigning.storeFile!!.exists()) {
+        signingConfig = relSigning
+      }
     }
     debug {
-      // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
-      // AI Studio.
-      signingConfig = signingConfigs.getByName("debugConfig")
+      val dbgSigning = signingConfigs.getByName("debugConfig")
+      if (dbgSigning.storeFile != null && dbgSigning.storeFile!!.exists()) {
+        signingConfig = dbgSigning
+      }
     }
   }
   compileOptions {
