@@ -36,7 +36,13 @@ data class WordEntity(
     val lastReviewedAt: Long = 0L     // Thời gian ôn gần nhất
 ) {
     val displayPronunciation: String
-        get() = if (pronunciation.contains("•")) pronunciation.substringBefore("•").trim() else pronunciation
+        get() {
+            val trimmed = pronunciation.trim()
+            if (trimmed.startsWith("[") && trimmed.contains("]")) {
+                return trimmed.substringBefore("]") + "]"
+            }
+            return if (trimmed.contains("•")) trimmed.substringBefore("•").trim() else trimmed
+        }
 }
 
 data class ExampleSentence(

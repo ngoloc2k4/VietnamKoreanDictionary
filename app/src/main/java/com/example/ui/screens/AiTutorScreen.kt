@@ -129,7 +129,7 @@ fun AiTutorScreen(
             }
         }
 
-        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
         // Quick Execution Mode Switcher Chips (Offline on-device vs Cloud Multi-AI)
         Row(

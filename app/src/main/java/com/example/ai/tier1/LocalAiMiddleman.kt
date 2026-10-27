@@ -106,8 +106,8 @@ object LocalAiMiddleman {
                 match.vietnamese.contains(qTrim, ignoreCase = true)
             )
 
-            if (isDirectMatch && match != null && qTrim.split(" ").size <= 2) {
-                val best = match
+            if (isDirectMatch && qTrim.split(" ").size <= 2) {
+                val best = match!!
                 val tier1Note = if (activeModelName != null) {
                     "Mô hình cục bộ Tầng 1: $activeModelName"
                 } else {

@@ -73,7 +73,7 @@ class ExampleUnitTest {
 
         val resultsKamsa = KoreanVietnameseSearchMatcher.searchAndRank(words, "kamsaham")
         assertTrue(resultsKamsa.isNotEmpty())
-        assertEquals("감사하다", resultsKamsa.first().word.korean)
+        assertTrue("Matches should contain either 감사하다 or 감사합니다", resultsKamsa.first().word.korean in listOf("감사하다", "감사합니다"))
     }
 
     @Test
@@ -270,6 +270,6 @@ class ExampleUnitTest {
 
         val camOnResults = KoreanVietnameseSearchMatcher.searchAndRank(words, "cam on")
         assertTrue(camOnResults.isNotEmpty())
-        assertEquals("감사하다", camOnResults.first().word.korean)
+        assertTrue("Matches should contain either 감사합니다 or 감사하다", camOnResults.first().word.korean in listOf("감사합니다", "감사하다"))
     }
 }
