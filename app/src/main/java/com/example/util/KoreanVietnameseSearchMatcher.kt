@@ -245,7 +245,7 @@ object KoreanVietnameseSearchMatcher {
         val normQ = qLower.replace("-", "").replace("k", "g").replace("p", "b").replace("t", "d")
 
         if (cleanPron.startsWith(qLower) || normPron.startsWith(normQ)) {
-            return MatchResult(word, 76, "Khớp phiên âm Romaja (${word.pronunciation})")
+            return MatchResult(word, 76, "Khớp phiên âm Romaja (${word.displayPronunciation})")
         }
 
         // 6. Substring / Contains match

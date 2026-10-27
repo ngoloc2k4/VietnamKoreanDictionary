@@ -131,6 +131,42 @@ fun AiTutorScreen(
 
         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
+        // Quick Execution Mode Switcher Chips (Offline on-device vs Cloud Multi-AI)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilterChip(
+                selected = tier2Mode == Tier2ExecutionMode.OFFLINE_LOCAL,
+                onClick = { viewModel.setTier2ExecutionMode(Tier2ExecutionMode.OFFLINE_LOCAL) },
+                label = {
+                    val label = if (activeTier2Model != null) {
+                        "📱 Ngoại tuyến (${activeTier2Model?.name})"
+                    } else {
+                        "📱 Ngoại tuyến (On-device)"
+                    }
+                    Text(label, style = MaterialTheme.typography.labelMedium)
+                },
+                leadingIcon = if (tier2Mode == Tier2ExecutionMode.OFFLINE_LOCAL) {
+                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                } else null
+            )
+            FilterChip(
+                selected = tier2Mode == Tier2ExecutionMode.ONLINE_CLOUD,
+                onClick = { viewModel.setTier2ExecutionMode(Tier2ExecutionMode.ONLINE_CLOUD) },
+                label = {
+                    val label = if (defaultProvider != null) "☁️ Đám mây (${defaultProvider.name})" else "☁️ Đám mây (Cloud)"
+                    Text(label, style = MaterialTheme.typography.labelMedium)
+                },
+                leadingIcon = if (tier2Mode == Tier2ExecutionMode.ONLINE_CLOUD) {
+                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                } else null
+            )
+        }
+
         // Chat Message List
         LazyColumn(
             state = listState,

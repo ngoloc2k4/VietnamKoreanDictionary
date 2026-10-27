@@ -233,5 +233,43 @@ class ExampleUnitTest {
 
         assertTrue(vocabResponse.isSuccess)
         assertTrue("Should include Korean vocabulary", vocabResponse.content.contains("공부하다") || vocabResponse.content.contains("Học tập"))
+
+        // Test Korean to Vietnamese sentence translation
+        val translationKrResponse = LocalTier2InferenceEngine.executeOfflineInference(
+            query = "Dịch câu: 저는 베트남 사람입니다",
+            localWords = words,
+            modelFileName = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+        )
+        assertTrue(translationKrResponse.isSuccess)
+        assertTrue("Translation should identify Vietnamese meaning", translationKrResponse.content.contains("Việt Nam"))
+
+        // Test Vietnamese to Korean sentence translation
+        val translationVnResponse = LocalTier2InferenceEngine.executeOfflineInference(
+            query = "Dịch sang tiếng Hàn: Cảm ơn bạn rất nhiều",
+            localWords = words,
+            modelFileName = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+        )
+        assertTrue(translationVnResponse.isSuccess)
+        assertTrue("Translation should provide polite and formal Korean", translationVnResponse.content.contains("감사합니다") || translationVnResponse.content.contains("고마워"))
+    }
+
+    @Test
+    fun `displayPronunciation cleans compound search index from UI display`() {
+        val wordWithCompoundIndex = words.first { it.korean == "안녕하세요" }
+        assertEquals("[an-nyeong-ha-se-yo]", wordWithCompoundIndex.displayPronunciation)
+
+        val wordGongbu = words.first { it.korean == "공부하다" }
+        assertEquals("[gong-bu-ha-da]", wordGongbu.displayPronunciation)
+    }
+
+    @Test
+    fun `essential everyday vocabulary search returns top ranked matches`() {
+        val xinChaoResults = KoreanVietnameseSearchMatcher.searchAndRank(words, "xin chao")
+        assertTrue(xinChaoResults.isNotEmpty())
+        assertEquals("안녕하세요", xinChaoResults.first().word.korean)
+
+        val camOnResults = KoreanVietnameseSearchMatcher.searchAndRank(words, "cam on")
+        assertTrue(camOnResults.isNotEmpty())
+        assertEquals("감사하다", camOnResults.first().word.korean)
     }
 }

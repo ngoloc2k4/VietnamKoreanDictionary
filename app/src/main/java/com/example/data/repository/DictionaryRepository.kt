@@ -42,6 +42,10 @@ class DictionaryRepository(context: Context) {
         }
     }
 
+    suspend fun findCandidates(query: String): List<WordEntity> = withContext(Dispatchers.IO) {
+        if (query.isBlank()) emptyList() else wordDao.findCandidates(query.trim())
+    }
+
     fun getFavoriteWords(): Flow<List<WordEntity>> = wordDao.getFavoriteWords()
 
     fun getUnmasteredWords(): Flow<List<WordEntity>> = wordDao.getUnmasteredWords()

@@ -226,8 +226,24 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             _isAiThinking.value = true
             try {
-                // Gather local word candidates for Local RAG
-                val localCandidates = searchResults.value.map { it.word }
+                // 1. Gather local word candidates dynamically from 78,000 DB for Local RAG
+                val extractedKeywords = extractKeywordsForDictionary(trimmed)
+                val localCandidates = mutableListOf<WordEntity>()
+                for (kw in extractedKeywords) {
+                    val matches = repository.findCandidates(kw)
+                    for (m in matches) {
+                        if (localCandidates.none { it.id == m.id }) {
+                            localCandidates.add(m)
+                        }
+                    }
+                }
+                if (localCandidates.isEmpty()) {
+                    val fallback = repository.findCandidates(trimmed.take(30))
+                    localCandidates.addAll(fallback)
+                }
+                if (localCandidates.isEmpty() && searchResults.value.isNotEmpty()) {
+                    localCandidates.addAll(searchResults.value.map { it.word })
+                }
 
                 // Convert chat history to UnifiedAiMessage
                 val history = _aiChatMessages.value.filter { it.role != "middleman" }.map {
@@ -257,18 +273,36 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
 
                     // TIER 2: Hybrid execution (Offline Heavy Model 0.5B-0.8B or Online Cloud Gateway)
                     val isTier2Offline = _tier2ExecutionMode.value == Tier2ExecutionMode.OFFLINE_LOCAL
-                    val tier2Model = _activeTier2Model.value
+                    val availableOfflineModel = _activeTier2Model.value ?: _activeLocalModel.value ?: _downloadedModels.value.firstOrNull()
 
-                    val response = if (isTier2Offline && tier2Model != null) {
-                        // Execute locally with Tier 2 heavy model (0.5B - 0.8B)
-                        LocalTier2InferenceEngine.executeOfflineInference(request, tier2Model, localCandidates)
+                    val response = if (isTier2Offline) {
+                        if (availableOfflineModel != null) {
+                            LocalTier2InferenceEngine.executeOfflineInference(request, availableOfflineModel, localCandidates)
+                        } else {
+                            LocalTier2InferenceEngine.executeOfflineInference(
+                                query = trimmed,
+                                localWords = localCandidates,
+                                modelFileName = "vietkor-nlp-ondevice.gguf",
+                                modelSizeMb = 135.0
+                            )
+                        }
                     } else {
                         // Call online Cloud Multi-Provider Gateway
                         val onlineRes = aiGateway.executeWithFallback(request)
-                        if (!onlineRes.isSuccess && tier2Model != null) {
-                            // Auto-fallback to offline model if online fails
-                            val fallbackRes = LocalTier2InferenceEngine.executeOfflineInference(request, tier2Model, localCandidates)
-                            fallbackRes.copy(content = "⚠️ *Không thể kết nối máy chủ trực tuyến, tự động chuyển sang mô hình ngoại tuyến Tầng 2:*\n\n" + fallbackRes.content)
+                        if (!onlineRes.isSuccess) {
+                            // Auto-fallback to offline on-device model when cloud has no key or network fails
+                            if (availableOfflineModel != null) {
+                                val fallbackRes = LocalTier2InferenceEngine.executeOfflineInference(request, availableOfflineModel, localCandidates)
+                                fallbackRes.copy(content = "⚠️ *Không có kết nối đám mây, tự động chuyển sang mô hình ngoại tuyến Tầng 2:*\n\n" + fallbackRes.content)
+                            } else {
+                                val localFallback = LocalTier2InferenceEngine.executeOfflineInference(
+                                    query = trimmed,
+                                    localWords = localCandidates,
+                                    modelFileName = "vietkor-nlp-ondevice.gguf",
+                                    modelSizeMb = 135.0
+                                )
+                                localFallback.copy(content = "⚠️ *Chưa cấu hình API Key đám mây, tự động giải đáp bằng mô hình ngoại tuyến:*\n\n" + localFallback.content)
+                            }
                         } else {
                             onlineRes
                         }
@@ -278,13 +312,13 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                         ChatMessageUi(
                             role = "assistant",
                             content = response.content,
-                            isOfflineHandled = false,
+                            isOfflineHandled = isTier2Offline || response.providerName.contains("Offline"),
                             debugInfo = response
                         )
                     } else {
                         ChatMessageUi(
                             role = "assistant",
-                            content = "⚠️ ${response.errorMessage ?: "Không thể kết nối đến AI"}\n\n*Gợi ý:* Hãy vào **Cài đặt AI** để kiểm tra API Key hoặc chọn provider dự phòng.",
+                            content = "⚠️ ${response.errorMessage ?: "Không thể kết nối đến AI"}\n\n*Gợi ý:* Hãy vào **Cài đặt AI** để kiểm tra API Key hoặc chọn mô hình ngoại tuyến.",
                             isOfflineHandled = false,
                             debugInfo = response
                         )
@@ -301,6 +335,33 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                 _isAiThinking.value = false
             }
         }
+    }
+
+    private fun extractKeywordsForDictionary(prompt: String): List<String> {
+        val keywords = mutableListOf<String>()
+        val hangulRegex = Regex("[가-힣]+")
+        hangulRegex.findAll(prompt).forEach { match ->
+            val word = match.value.trim()
+            if (word.length >= 1) {
+                keywords.add(word)
+            }
+        }
+
+        val cleanPrompt = prompt
+            .replace(Regex("(?i)\\b(dịch|dịch câu|translate|nghĩa là gì|phân tích|ngữ pháp|cấu trúc|so sánh|khác nhau|là gì|thế nào|cách dùng|cho tôi|giúp tôi|hãy|từ|chữ|và|với|trong|tiếng hàn|tiếng việt)\\b"), " ")
+            .trim()
+
+        val tokens = cleanPrompt.split(Regex("[\\s,?.!;:\"'()]+")).filter { it.length >= 2 }
+        if (tokens.isNotEmpty()) {
+            keywords.add(tokens.joinToString(" ").take(30))
+            for (t in tokens.take(4)) {
+                if (!keywords.contains(t)) {
+                    keywords.add(t)
+                }
+            }
+        }
+
+        return keywords.distinct()
     }
 
     fun clearAiChat() {
@@ -376,19 +437,28 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     fun setActiveTier2Model(fileName: String?) {
         val app = getApplication<Application>()
         AiModelManager.setActiveTier2Model(app, fileName)
+        if (fileName != null) {
+            setTier2ExecutionMode(Tier2ExecutionMode.OFFLINE_LOCAL)
+        }
         refreshDownloadedModels()
     }
 
     fun downloadModelPreset(preset: ModelPreset) {
         viewModelScope.launch {
-            AiModelManager.downloadPreset(getApplication(), preset)
+            val res = AiModelManager.downloadPreset(getApplication(), preset)
+            if (res.isSuccess && preset.tier == 2) {
+                setTier2ExecutionMode(Tier2ExecutionMode.OFFLINE_LOCAL)
+            }
             refreshDownloadedModels()
         }
     }
 
     fun downloadCustomModel(url: String, fileName: String, tier: Int = 1) {
         viewModelScope.launch {
-            AiModelManager.downloadCustomUrl(getApplication(), url, fileName, tier)
+            val res = AiModelManager.downloadCustomUrl(getApplication(), url, fileName, tier)
+            if (res.isSuccess && tier == 2) {
+                setTier2ExecutionMode(Tier2ExecutionMode.OFFLINE_LOCAL)
+            }
             refreshDownloadedModels()
         }
     }

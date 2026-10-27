@@ -115,7 +115,7 @@ object LocalAiMiddleman {
                 }
                 val answer = buildString {
                     append("📖 **Tra cứu ngoại tuyến tức thì:**\n\n")
-                    append("• **Tiếng Hàn:** ${best.korean} ${best.pronunciation}\n")
+                    append("• **Tiếng Hàn:** ${best.korean} (${best.displayPronunciation})\n")
                     append("• **Nghĩa:** ${best.vietnamese}\n")
                     append("• **Từ loại:** ${best.partOfSpeech}\n")
                     if (best.hanja.isNotBlank() || best.hanViet.isNotBlank()) {

@@ -34,7 +34,10 @@ data class WordEntity(
     val isMastered: Boolean = false,  // Đã thuộc trong flashcard
     val reviewCount: Int = 0,         // Số lần ôn tập
     val lastReviewedAt: Long = 0L     // Thời gian ôn gần nhất
-)
+) {
+    val displayPronunciation: String
+        get() = if (pronunciation.contains("•")) pronunciation.substringBefore("•").trim() else pronunciation
+}
 
 data class ExampleSentence(
     val korean: String,

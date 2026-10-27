@@ -379,9 +379,9 @@ fun WordItemCard(
                         color = MaterialTheme.colorScheme.primary
                     )
 
-                    if (word.pronunciation.isNotBlank()) {
+                    if (word.displayPronunciation.isNotBlank()) {
                         Text(
-                            text = word.pronunciation,
+                            text = word.displayPronunciation,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

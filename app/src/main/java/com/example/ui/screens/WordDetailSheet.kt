@@ -123,9 +123,9 @@ fun WordDetailSheet(
                                         color = MaterialTheme.colorScheme.primary
                                     )
 
-                                    if (word.pronunciation.isNotBlank()) {
+                                    if (word.displayPronunciation.isNotBlank()) {
                                         Text(
-                                            text = word.pronunciation,
+                                            text = word.displayPronunciation,
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
