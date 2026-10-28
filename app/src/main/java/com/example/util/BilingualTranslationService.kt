@@ -70,17 +70,18 @@ object BilingualTranslationService {
                 .url(url1)
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 .build()
-            val res1 = httpClient.newCall(req1).execute()
-            if (res1.isSuccessful) {
-                val body = res1.body?.string() ?: ""
-                if (body.startsWith("[")) {
-                    val jsonArray = JSONArray(body)
-                    val sb = StringBuilder()
-                    for (i in 0 until jsonArray.length()) {
-                        sb.append(jsonArray.getString(i))
+            httpClient.newCall(req1).execute().use { res1 ->
+                if (res1.isSuccessful) {
+                    val body = res1.body?.string() ?: ""
+                    if (body.startsWith("[")) {
+                        val jsonArray = JSONArray(body)
+                        val sb = StringBuilder()
+                        for (i in 0 until jsonArray.length()) {
+                            sb.append(jsonArray.getString(i))
+                        }
+                        val result = sb.toString().trim()
+                        if (result.isNotEmpty()) return@withContext result
                     }
-                    val result = sb.toString().trim()
-                    if (result.isNotEmpty()) return@withContext result
                 }
             }
         } catch (_: Exception) {}
@@ -92,19 +93,20 @@ object BilingualTranslationService {
                 .url(url2)
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 14)")
                 .build()
-            val res2 = httpClient.newCall(req2).execute()
-            if (res2.isSuccessful) {
-                val body = res2.body?.string() ?: ""
-                if (body.startsWith("[")) {
-                    val outer = JSONArray(body)
-                    val inner = outer.getJSONArray(0)
-                    val sb = StringBuilder()
-                    for (i in 0 until inner.length()) {
-                        val part = inner.getJSONArray(i)
-                        sb.append(part.getString(0))
+            httpClient.newCall(req2).execute().use { res2 ->
+                if (res2.isSuccessful) {
+                    val body = res2.body?.string() ?: ""
+                    if (body.startsWith("[")) {
+                        val outer = JSONArray(body)
+                        val inner = outer.getJSONArray(0)
+                        val sb = StringBuilder()
+                        for (i in 0 until inner.length()) {
+                            val part = inner.getJSONArray(i)
+                            sb.append(part.getString(0))
+                        }
+                        val result = sb.toString().trim()
+                        if (result.isNotEmpty()) return@withContext result
                     }
-                    val result = sb.toString().trim()
-                    if (result.isNotEmpty()) return@withContext result
                 }
             }
         } catch (_: Exception) {}
@@ -138,13 +140,14 @@ object BilingualTranslationService {
                     .header("Authorization", "DeepL-Auth-Key $deepLApiKey")
                     .post(body)
                     .build()
-                val res = httpClient.newCall(req).execute()
-                if (res.isSuccessful) {
-                    val resBody = res.body?.string() ?: ""
-                    val jsonObj = JSONObject(resBody)
-                    val translations = jsonObj.getJSONArray("translations")
-                    if (translations.length() > 0) {
-                        return@withContext translations.getJSONObject(0).getString("text")
+                httpClient.newCall(req).execute().use { res ->
+                    if (res.isSuccessful) {
+                        val resBody = res.body?.string() ?: ""
+                        val jsonObj = JSONObject(resBody)
+                        val translations = jsonObj.getJSONArray("translations")
+                        if (translations.length() > 0) {
+                            return@withContext translations.getJSONObject(0).getString("text")
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -169,14 +172,15 @@ object BilingualTranslationService {
                     .url(proxyUrl)
                     .post(body)
                     .build()
-                val res = httpClient.newCall(req).execute()
-                if (res.isSuccessful) {
-                    val resBody = res.body?.string() ?: ""
-                    val jsonObj = JSONObject(resBody)
-                    if (jsonObj.optInt("code") == 200 && jsonObj.has("data")) {
-                        val data = jsonObj.getString("data")
-                        if (data.isNotBlank() && !data.startsWith("http")) {
-                            return@withContext data.trim()
+                httpClient.newCall(req).execute().use { res ->
+                    if (res.isSuccessful) {
+                        val resBody = res.body?.string() ?: ""
+                        val jsonObj = JSONObject(resBody)
+                        if (jsonObj.optInt("code") == 200 && jsonObj.has("data")) {
+                            val data = jsonObj.getString("data")
+                            if (data.isNotBlank() && !data.startsWith("http")) {
+                                return@withContext data.trim()
+                            }
                         }
                     }
                 }

@@ -28,11 +28,13 @@ android {
     create("release") {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/release-keystore.jks"
       val kFile = file(keystorePath)
-      if (kFile.exists()) {
+      val envStorePass = System.getenv("STORE_PASSWORD")
+      val envKeyPass = System.getenv("KEY_PASSWORD")
+      if (kFile.exists() && !envStorePass.isNullOrBlank() && !envKeyPass.isNullOrBlank()) {
         storeFile = kFile
-        storePassword = System.getenv("STORE_PASSWORD") ?: "vietkor2026SecureReleasePass!"
+        storePassword = envStorePass
         keyAlias = System.getenv("KEY_ALIAS") ?: "vietkor-key"
-        keyPassword = System.getenv("KEY_PASSWORD") ?: "vietkor2026SecureReleasePass!"
+        keyPassword = envKeyPass
         enableV1Signing = true
         enableV2Signing = true
       }
@@ -40,11 +42,13 @@ android {
     create("debugConfig") {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/release-keystore.jks"
       val kFile = file(keystorePath)
-      if (kFile.exists()) {
+      val envStorePass = System.getenv("STORE_PASSWORD")
+      val envKeyPass = System.getenv("KEY_PASSWORD")
+      if (kFile.exists() && !envStorePass.isNullOrBlank() && !envKeyPass.isNullOrBlank()) {
         storeFile = kFile
-        storePassword = System.getenv("STORE_PASSWORD") ?: "vietkor2026SecureReleasePass!"
+        storePassword = envStorePass
         keyAlias = System.getenv("KEY_ALIAS") ?: "vietkor-key"
-        keyPassword = System.getenv("KEY_PASSWORD") ?: "vietkor2026SecureReleasePass!"
+        keyPassword = envKeyPass
         enableV1Signing = true
         enableV2Signing = true
       }

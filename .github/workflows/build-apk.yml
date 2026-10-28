@@ -16,13 +16,15 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test_and_build:
     name: Unit Test & Build APK (Android 8.0+)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout Repository
@@ -60,7 +62,7 @@ jobs:
       - name: Decode Signing Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          STORE_PASS: ${{ secrets.STORE_PASSWORD || 'vietkor2026SecureReleasePass!' }}
+          STORE_PASS: ${{ secrets.STORE_PASSWORD }}
           ALIAS: ${{ secrets.KEY_ALIAS || 'vietkor-key' }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
@@ -68,6 +70,10 @@ jobs:
             echo "✓ Decoded signing keystore from GitHub Secrets."
           else
             echo "::error::KEYSTORE_BASE64 secret is not set! Aborting to prevent inconsistent random signing."
+            exit 1
+          fi
+          if [ -z "$STORE_PASS" ]; then
+            echo "::error::STORE_PASSWORD secret is not set!"
             exit 1
           fi
           ls -lh release-keystore.jks
@@ -90,9 +96,9 @@ jobs:
       - name: Build Debug & Release APK
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/release-keystore.jks
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'vietkor2026SecureReleasePass!' }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'vietkor-key' }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'vietkor2026SecureReleasePass!' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleDebug assembleRelease --stacktrace
 
       # 4. Upload APK Artifacts
@@ -125,9 +131,28 @@ jobs:
             $APKSIGNER verify --print-certs VietnamKoreanDictionary.apk | grep -E "(Signer #|SHA-256)" || true
           fi
 
-      # 6. Publish / Overwrite Beta Release with VietnamKoreanDictionary.apk
+      # 6. Upload Standardized Release APK for Release Job
+      - name: Upload Standardized Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: VietnamKoreanDictionary-Release-APK
+          path: VietnamKoreanDictionary.apk
+          retention-days: 7
+
+  publish_beta:
+    name: Publish Beta Release
+    needs: test_and_build
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Standardized APK
+        uses: actions/download-artifact@v4
+        with:
+          name: VietnamKoreanDictionary-Release-APK
+
       - name: Publish Beta Release
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: beta

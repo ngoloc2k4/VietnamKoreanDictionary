@@ -6,8 +6,11 @@ import com.example.data.initial.PreloadedWords
 import com.example.data.model.SearchHistoryEntity
 import com.example.data.model.TranslationHistoryEntity
 import com.example.data.model.WordEntity
+import com.example.util.AppLogManager
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -23,11 +26,19 @@ class DictionaryRepository(context: Context) {
     private val wordDao = db.wordDao()
     private val searchHistoryDao = db.searchHistoryDao()
     private val translationHistoryDao = db.translationHistoryDao()
+    private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
-        CoroutineScope(Dispatchers.IO).launch {
-            if (wordDao.getCount() == 0) {
-                wordDao.insertWords(PreloadedWords.getInitialWords())
+        val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+            AppLogManager.log("DictionaryRepository", "Lỗi nạp từ vựng khởi tạo: ${throwable.message}", "WARN")
+        }
+        repositoryScope.launch(exceptionHandler) {
+            try {
+                if (wordDao.getCount() == 0) {
+                    wordDao.insertWords(PreloadedWords.getInitialWords())
+                }
+            } catch (e: Exception) {
+                AppLogManager.log("DictionaryRepository", "Không thể kiểm tra/nạp từ điển ban đầu: ${e.message}", "WARN")
             }
         }
     }
