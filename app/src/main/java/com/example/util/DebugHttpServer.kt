@@ -120,6 +120,40 @@ object DebugHttpServer {
         }
     }
 
+    private fun parseQueryParams(queryString: String): Map<String, String> {
+        if (queryString.isBlank()) return emptyMap()
+        val result = mutableMapOf<String, String>()
+        for (pair in queryString.split('&')) {
+            val idx = pair.indexOf('=')
+            if (idx != -1) {
+                val key = URLDecoder.decode(pair.substring(0, idx), "UTF-8")
+                val value = URLDecoder.decode(pair.substring(idx + 1), "UTF-8")
+                result[key] = value
+            } else if (pair.isNotBlank()) {
+                result[URLDecoder.decode(pair, "UTF-8")] = ""
+            }
+        }
+        return result
+    }
+
+    private fun filterLogs(params: Map<String, String>): List<AppLogEntry> {
+        var list = AppLogManager.getLogs()
+        val since = params["since"]?.toLongOrNull()
+        if (since != null) {
+            list = list.filter { it.timestamp >= since }
+        }
+        val level = params["level"]?.uppercase(Locale.ROOT)
+        if (!level.isNullOrBlank()) {
+            list = list.filter { it.level.equals(level, ignoreCase = true) }
+        }
+        val tag = params["tag"]
+        if (!tag.isNullOrBlank()) {
+            list = list.filter { it.tag.contains(tag, ignoreCase = true) }
+        }
+        val limit = params["limit"]?.toIntOrNull() ?: 500
+        return list.takeLast(limit)
+    }
+
     private fun handleClient(client: Socket, context: Context) {
         try {
             client.soTimeout = 10000
@@ -129,11 +163,42 @@ object DebugHttpServer {
             val requestLine = reader.readLine() ?: return
             val parts = requestLine.split(" ")
             if (parts.size < 2) return
-            val path = parts[1]
+            val method = parts[0].uppercase(Locale.ROOT)
+            val rawPath = parts[1]
+            val path = rawPath.substringBefore('?')
+            val queryString = if (rawPath.contains('?')) rawPath.substringAfter('?') else ""
+            val queryParams = parseQueryParams(queryString)
+
+            if (method == "OPTIONS") {
+                sendNoContent(output)
+                return
+            }
 
             when {
+                path == "/api/logs" || path == "/logs.json" -> {
+                    val filtered = filterLogs(queryParams)
+                    val json = JSONObject().apply {
+                        put("status", "ok")
+                        put("count", filtered.size)
+                        put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
+                        put("timestamp", System.currentTimeMillis())
+                        val array = JSONArray()
+                        for (entry in filtered) {
+                            array.put(JSONObject().apply {
+                                put("timestamp", entry.timestamp)
+                                put("time", entry.formattedTime)
+                                put("level", entry.level)
+                                put("tag", entry.tag)
+                                put("message", entry.message)
+                            })
+                        }
+                        put("logs", array)
+                    }
+                    sendResponse(output, "application/json; charset=utf-8", json.toString(2))
+                }
                 path == "/logs" || path == "/logs.txt" -> {
-                    val logText = AppLogManager.getLogs().joinToString("\n") {
+                    val filtered = filterLogs(queryParams)
+                    val logText = filtered.joinToString("\n") {
                         "[${it.formattedTime}] [${it.level}] [${it.tag}]: ${it.message}"
                     }
                     sendResponse(output, "text/plain; charset=utf-8", logText)
@@ -150,12 +215,17 @@ object DebugHttpServer {
                         put("databaseMb", report.databaseMb)
                         put("cacheMb", report.cacheMb)
                         put("freeBudgetMb", report.freeBudgetMb)
+                        put("ipAddress", getDeviceIpAddress(context))
                     }
                     sendResponse(output, "application/json; charset=utf-8", json.toString(2))
                 }
-                path == "/clear" -> {
+                path == "/clear" || path == "/api/clear" -> {
                     AppLogManager.clear()
-                    sendRedirect(output, "/")
+                    if (path.startsWith("/api/")) {
+                        sendResponse(output, "application/json; charset=utf-8", """{"status":"ok","message":"Logs cleared"}""")
+                    } else {
+                        sendRedirect(output, "/")
+                    }
                 }
                 else -> {
                     val html = buildDashboardHtml(context)
@@ -169,6 +239,17 @@ object DebugHttpServer {
         }
     }
 
+    private fun sendNoContent(output: OutputStream) {
+        val writer = PrintWriter(OutputStreamWriter(output, Charsets.UTF_8))
+        writer.print("HTTP/1.1 204 No Content\r\n")
+        writer.print("Connection: close\r\n")
+        writer.print("Access-Control-Allow-Origin: *\r\n")
+        writer.print("Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n")
+        writer.print("Access-Control-Allow-Headers: *\r\n")
+        writer.print("\r\n")
+        writer.flush()
+    }
+
     private fun sendResponse(output: OutputStream, contentType: String, content: String) {
         val bytes = content.toByteArray(Charsets.UTF_8)
         val writer = PrintWriter(OutputStreamWriter(output, Charsets.UTF_8))
@@ -177,6 +258,9 @@ object DebugHttpServer {
         writer.print("Content-Length: ${bytes.size}\r\n")
         writer.print("Connection: close\r\n")
         writer.print("Access-Control-Allow-Origin: *\r\n")
+        writer.print("Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n")
+        writer.print("Access-Control-Allow-Headers: *\r\n")
+        writer.print("Cache-Control: no-cache, no-store, must-revalidate\r\n")
         writer.print("\r\n")
         writer.flush()
         output.write(bytes)
@@ -299,9 +383,19 @@ object DebugHttpServer {
 
                 <div class="actions">
                     <button class="btn btn-secondary" onclick="location.reload()">🔄 Làm mới</button>
-                    <a class="btn btn-secondary" href="/clear">🗑️ Xóa toàn bộ logs</a>
-                    <a class="btn btn-secondary" href="/logs" target="_blank">📄 Xem text thuần</a>
+                    <a class="btn btn-secondary" href="/clear">🗑️ Xóa logs</a>
+                    <a class="btn btn-secondary" href="/logs" target="_blank">📄 Text Logs</a>
+                    <a class="btn btn-secondary" href="/api/logs" target="_blank">🤖 JSON API Logs</a>
                     <a class="btn btn-secondary" href="/api/status" target="_blank">📊 JSON Status</a>
+                </div>
+
+                <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 15px; font-size: 13px;">
+                    <div style="color: var(--primary); font-weight: bold; margin-bottom: 6px;">🤖 Dành cho Agent / PC đọc Logs qua LAN:</div>
+                    <div style="font-family: monospace; color: var(--text-muted); line-height: 1.6;">
+                        • Lấy toàn bộ logs JSON: <code style="color: var(--text);">curl -s "http://${getDeviceIpAddress(context)}:$PORT/api/logs"</code><br/>
+                        • Polling theo thời gian: <code style="color: var(--text);">curl -s "http://${getDeviceIpAddress(context)}:$PORT/api/logs?since=TIMESTAMP&level=ERROR"</code><br/>
+                        • Lọc theo Tag hoặc Limit: <code style="color: var(--text);">curl -s "http://${getDeviceIpAddress(context)}:$PORT/api/logs?tag=Search&limit=50"</code>
+                    </div>
                 </div>
 
                 <div class="log-box" id="logBox">

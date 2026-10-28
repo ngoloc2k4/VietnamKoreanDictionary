@@ -22,6 +22,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+private val NUMBERED_LIST_REGEX = Regex("^\\d+\\.\\s.*")
+private val NUMBERED_PREFIX_REGEX = Regex("^(\\d+\\.)\\s")
+private val MARKDOWN_INLINE_REGEX = Regex("(\\*\\*\\*(.*?)\\*\\*\\*|\\*\\*(.*?)\\*\\*|\\*([^*\\n]+?)\\*|`(.*?)`|__([^_\\n]+?)__|(?<=\\s|^)_([^_\\n]+?)_(?=\\s|$))")
+
 sealed class MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock()
     data class BulletItem(val text: String, val indentDp: Dp) : MarkdownBlock()
@@ -81,8 +85,8 @@ fun parseMarkdownToBlocks(markdown: String): List<MarkdownBlock> {
                 val indentDp = (indent * 12 + 4).dp
                 blocks.add(MarkdownBlock.BulletItem(itemText, indentDp))
             }
-            trimmed.matches(Regex("^\\d+\\.\\s.*")) -> {
-                val prefixMatch = Regex("^(\\d+\\.)\\s").find(trimmed)
+            trimmed.matches(NUMBERED_LIST_REGEX) -> {
+                val prefixMatch = NUMBERED_PREFIX_REGEX.find(trimmed)
                 val numPrefix = prefixMatch?.groupValues?.get(1) ?: "•"
                 val itemText = trimmed.substring(numPrefix.length).trim()
                 blocks.add(MarkdownBlock.NumberedItem(numPrefix, itemText))
@@ -255,10 +259,9 @@ fun RichMarkdownText(
  */
 fun parseMarkdownInline(text: String, isUser: Boolean = false): AnnotatedString {
     return buildAnnotatedString {
-        val pattern = Regex("(\\*\\*\\*(.*?)\\*\\*\\*|\\*\\*(.*?)\\*\\*|\\*([^*\\n]+?)\\*|`(.*?)`|__([^_\\n]+?)__|(?<=\\s|^)_([^_\\n]+?)_(?=\\s|$))")
         var lastIndex = 0
 
-        pattern.findAll(text).forEach { matchResult ->
+        MARKDOWN_INLINE_REGEX.findAll(text).forEach { matchResult ->
             val range = matchResult.range
             if (range.first > lastIndex) {
                 append(text.substring(lastIndex, range.first))

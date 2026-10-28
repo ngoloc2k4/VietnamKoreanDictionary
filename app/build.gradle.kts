@@ -58,7 +58,7 @@ android {
   buildTypes {
     release {
       isCrunchPngs = false
-      isMinifyEnabled = false
+      isMinifyEnabled = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       val relSigning = signingConfigs.getByName("release")
       if (relSigning.storeFile != null && relSigning.storeFile!!.exists()) {

@@ -282,10 +282,11 @@ object AiModelManager {
         targetFileName: String,
         tier: Int = 1
     ): Result<File> = withContext(Dispatchers.IO) {
-        val cleanFileName = if (targetFileName.endsWith(".gguf") || targetFileName.endsWith(".bin")) {
-            targetFileName
+        val sanitizedBaseName = File(targetFileName.trim()).name
+        val cleanFileName = if (sanitizedBaseName.endsWith(".gguf") || sanitizedBaseName.endsWith(".bin")) {
+            sanitizedBaseName
         } else {
-            "$targetFileName.gguf"
+            "$sanitizedBaseName.gguf"
         }
         downloadFile(
             context = context,
@@ -306,11 +307,12 @@ object AiModelManager {
         tier: Int
     ): Result<File> {
         val modelsDir = getModelsDir(context)
-        val targetFile = File(modelsDir, targetFileName)
-        val tempFile = File(modelsDir, "$targetFileName.tmp")
+        val safeFileName = File(targetFileName).name
+        val targetFile = File(modelsDir, safeFileName)
+        val tempFile = File(modelsDir, "$safeFileName.tmp")
 
         try {
-            AppLogManager.log("AiModelManager", "Bắt đầu tải mô hình Tầng $tier: $url -> $targetFileName")
+            AppLogManager.log("AiModelManager", "Bắt đầu tải mô hình Tầng $tier: $url -> $safeFileName")
             _downloadState.value = DownloadState.Downloading(modelId, 0f, 0.0, approximateSizeMb)
 
             val request = Request.Builder()
@@ -357,14 +359,14 @@ object AiModelManager {
                 }
 
                 if (tempFile.renameTo(targetFile)) {
-                    _downloadState.value = DownloadState.Completed(modelId, targetFileName)
+                    _downloadState.value = DownloadState.Completed(modelId, safeFileName)
                     // Auto-activate in appropriate tier if none active
                     if (tier == 1 && getActiveTier1Model(context) == null) {
-                        setActiveTier1Model(context, targetFileName)
+                        setActiveTier1Model(context, safeFileName)
                     } else if (tier == 2 && getActiveTier2Model(context) == null) {
-                        setActiveTier2Model(context, targetFileName)
+                        setActiveTier2Model(context, safeFileName)
                     }
-                    AppLogManager.log("AiModelManager", "Tải hoàn tất và sẵn sàng: $targetFileName (Tầng $tier)")
+                    AppLogManager.log("AiModelManager", "Tải hoàn tất và sẵn sàng: $safeFileName (Tầng $tier)")
                     return Result.success(targetFile)
                 } else {
                     val errMsg = "Không thể ghi tệp mô hình vào bộ nhớ"
@@ -376,7 +378,7 @@ object AiModelManager {
             tempFile.delete()
             if (activeDownloadCall?.isCanceled() == true) {
                 _downloadState.value = DownloadState.Idle
-                AppLogManager.log("AiModelManager", "Đã hủy tải mô hình: $targetFileName")
+                AppLogManager.log("AiModelManager", "Đã hủy tải mô hình: $safeFileName")
                 return Result.failure(IOException("Đã hủy tải"))
             }
             val msg = e.message ?: "Lỗi không xác định khi tải"
