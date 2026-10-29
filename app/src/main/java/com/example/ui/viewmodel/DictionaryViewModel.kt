@@ -452,20 +452,28 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         val hangulRegex = Regex("[가-힣]+")
         hangulRegex.findAll(prompt).forEach { match ->
             val word = match.value.trim()
-            if (word.length >= 1) {
+            if (word.isNotEmpty()) {
                 keywords.add(word)
             }
         }
 
         val cleanPrompt = prompt
-            .replace(Regex("(?i)\\b(dịch|dịch câu|translate|nghĩa là gì|phân tích|ngữ pháp|cấu trúc|so sánh|khác nhau|là gì|thế nào|cách dùng|cho tôi|giúp tôi|hãy|từ|chữ|và|với|trong|tiếng hàn|tiếng việt)\\b"), " ")
+            .replace(Regex("(?i)\\b(dịch|dịch câu|translate|nghĩa là gì|phân tích|ngữ pháp|cấu trúc|so sánh|khác nhau|là gì|thế nào|cách dùng|cho tôi|giúp tôi|hãy|từ|chữ|trong|tiếng hàn|tiếng việt)\\b"), " ")
             .trim()
 
         val tokens = cleanPrompt.split(Regex("[\\s,?.!;:\"'()]+")).filter { it.length >= 2 }
         if (tokens.isNotEmpty()) {
-            keywords.add(tokens.joinToString(" ").take(30))
-            for (t in tokens.take(4)) {
-                if (!keywords.contains(t)) {
+            keywords.add(tokens.joinToString(" ").take(40))
+
+            // 2-gram compound Vietnamese words (e.g. "chào hỏi", "văn hoá", "tâm trạng", "học tập")
+            if (tokens.size >= 2) {
+                tokens.windowed(2, 1).forEach { pair ->
+                    keywords.add(pair.joinToString(" "))
+                }
+            }
+
+            for (t in tokens.take(8)) {
+                if (!keywords.contains(t) && t !in listOf("rồi", "xong", "hoặc", "và", "nhưng", "thì")) {
                     keywords.add(t)
                 }
             }

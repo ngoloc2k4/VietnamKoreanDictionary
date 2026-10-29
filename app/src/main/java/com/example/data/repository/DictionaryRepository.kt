@@ -36,6 +36,13 @@ class DictionaryRepository(context: Context) {
             try {
                 if (wordDao.getCount() == 0) {
                     wordDao.insertWords(PreloadedWords.getInitialWords())
+                } else {
+                    // Self-healing: Ensure curated core vocabulary (기분, 심정, 감정, 마음) exists and has modern translations
+                    val gibun = wordDao.getWordByKorean("기분")
+                    if (gibun == null || !gibun.vietnamese.contains("Tâm trạng", ignoreCase = true)) {
+                        AppLogManager.log("DictionaryRepository", "Tự động đồng bộ bổ sung từ vựng cảm xúc & tâm trạng cốt lõi...", "INFO")
+                        wordDao.insertWords(PreloadedWords.getInitialWords())
+                    }
                 }
             } catch (e: Exception) {
                 AppLogManager.log("DictionaryRepository", "Không thể kiểm tra/nạp từ điển ban đầu: ${e.message}", "WARN")
@@ -140,7 +147,7 @@ class DictionaryRepository(context: Context) {
                     it.politeLife.equals(trimmed)
                 }
             if (direct != null) {
-                return@withContext direct.vietnamese + " (" + direct.pronunciation + ")"
+                return@withContext direct.vietnamese + " (" + direct.displayPronunciation + ")"
             }
         } else {
             val direct = wordDao.findFirstMatchingVietnamese(trimmed)
@@ -149,7 +156,7 @@ class DictionaryRepository(context: Context) {
                     it.hanViet.contains(trimmed, ignoreCase = true)
                 }
             if (direct != null) {
-                return@withContext direct.korean + " (" + direct.pronunciation + " - " + direct.vietnamese + ")"
+                return@withContext direct.korean + " (" + direct.displayPronunciation + " - " + direct.vietnamese + ")"
             }
         }
 

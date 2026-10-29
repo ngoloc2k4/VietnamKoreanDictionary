@@ -13,9 +13,11 @@ interface WordDao {
         SELECT * FROM words 
         WHERE korean LIKE '%' || :query || '%' 
            OR vietnamese LIKE '%' || :query || '%' 
+           OR definition LIKE '%' || :query || '%'
            OR hanja LIKE '%' || :query || '%' 
            OR hanViet LIKE '%' || :query || '%' 
            OR pronunciation LIKE '%' || :query || '%'
+           OR synonyms LIKE '%' || :query || '%'
         ORDER BY 
            CASE WHEN examAppearances >= 9000 THEN 0 ELSE 1 END,
            CASE WHEN korean = :query THEN 0
@@ -36,18 +38,28 @@ interface WordDao {
         SELECT * FROM words 
         WHERE korean LIKE '%' || :query || '%' 
            OR vietnamese LIKE '%' || :query || '%' 
+           OR definition LIKE '%' || :query || '%'
+           OR hanViet LIKE '%' || :query || '%'
            OR pronunciation LIKE '%' || :query || '%'
         ORDER BY 
            CASE WHEN examAppearances >= 9000 THEN 0 ELSE 1 END,
            examAppearances DESC 
-        LIMIT 5
+        LIMIT 25
     """)
     suspend fun findCandidates(query: String): List<WordEntity>
 
     @Query("SELECT * FROM words WHERE korean = :korean LIMIT 1")
     suspend fun getWordByKorean(korean: String): WordEntity?
 
-    @Query("SELECT * FROM words WHERE vietnamese LIKE '%' || :query || '%' LIMIT 1")
+    @Query("""
+        SELECT * FROM words 
+        WHERE vietnamese LIKE '%' || :query || '%' 
+           OR definition LIKE '%' || :query || '%'
+        ORDER BY 
+           CASE WHEN examAppearances >= 9000 THEN 0 ELSE 1 END,
+           examAppearances DESC 
+        LIMIT 1
+    """)
     suspend fun findFirstMatchingVietnamese(query: String): WordEntity?
 
     @Query("SELECT * FROM words WHERE isFavorite = 1 ORDER BY lastReviewedAt DESC, korean ASC")

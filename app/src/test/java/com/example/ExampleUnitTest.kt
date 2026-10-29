@@ -502,4 +502,54 @@ class ExampleUnitTest {
         assertEquals("📱 Tầng 2 Ngoại tuyến", com.example.ui.viewmodel.AiTutorExecutionTier.TIER2_OFFLINE.label)
         assertEquals("☁️ Tầng 2 Đám mây", com.example.ui.viewmodel.AiTutorExecutionTier.TIER2_CLOUD.label)
     }
+
+    @Test
+    fun `tam trang and tâm trạng search finds 기분 and emotion words with top ranking`() {
+        val resultsAccented = KoreanVietnameseSearchMatcher.searchAndRank(words, "tâm trạng")
+        assertTrue("Results for 'tâm trạng' must not be empty", resultsAccented.isNotEmpty())
+        assertEquals("기분", resultsAccented.first().word.korean)
+        assertTrue("Top result for tâm trạng must have score >= 90", resultsAccented.first().score >= 90)
+
+        val resultsUnaccented = KoreanVietnameseSearchMatcher.searchAndRank(words, "tam trang")
+        assertTrue("Results for 'tam trang' must not be empty", resultsUnaccented.isNotEmpty())
+        assertEquals("기분", resultsUnaccented.first().word.korean)
+
+        val wordsFound = resultsAccented.map { it.word.korean }
+        assertTrue("Should include 심정 or 마음 or 감정", wordsFound.contains("심정") || wordsFound.contains("마음") || wordsFound.contains("감정"))
+    }
+
+    @Test
+    fun `GgufModelInspector handles non-existent or invalid files gracefully`() {
+        val nonExistent = com.example.ai.tier2.GgufModelInspector.inspect(java.io.File("non_existent_model.gguf"))
+        assertFalse(nonExistent.isValidGguf)
+        assertNotNull(nonExistent.errorMessage)
+
+        val tempFile = java.io.File.createTempFile("test_corrupt", ".gguf")
+        try {
+            tempFile.writeBytes(byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8))
+            val corrupt = com.example.ai.tier2.GgufModelInspector.inspect(tempFile)
+            assertFalse(corrupt.isValidGguf)
+        } finally {
+            tempFile.delete()
+        }
+    }
+
+    @Test
+    fun `LocalTier2InferenceEngine provides in-depth explanation for emotion and mood`() {
+        val candidateWords = KoreanVietnameseSearchMatcher.searchAndRank(words, "tâm trạng").map { it.word }
+        val response = LocalTier2InferenceEngine.executeOfflineInference(
+            query = "tâm trạng",
+            localWords = candidateWords,
+            modelFileName = "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+            modelSizeMb = 390.0
+        )
+
+        assertTrue(response.isSuccess)
+        val content = response.content
+        assertTrue("Must explain 기분", content.contains("기분"))
+        assertTrue("Must explain 심정", content.contains("심정"))
+        assertTrue("Must explain 감정", content.contains("감정"))
+        assertTrue("Must explain 마음", content.contains("마음"))
+        assertTrue("Must mention common phrases like 기분이 좋다", content.contains("기분이 좋다"))
+    }
 }
