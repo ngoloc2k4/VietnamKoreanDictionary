@@ -7,7 +7,6 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -34,14 +33,12 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai.gateway.AiProviderConfig
-import com.example.ai.gateway.ProviderConnectionStatus
 import com.example.ai.tier1.AiModelManager
 import com.example.ai.tier1.DownloadState
 import com.example.ai.tier1.LocalModelInfo
 import com.example.ai.tier1.ModelPreset
 import com.example.ai.tier1.Tier2ExecutionMode
 import com.example.ui.viewmodel.DictionaryViewModel
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,8 +46,6 @@ fun SettingsScreen(
     viewModel: DictionaryViewModel,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
     var selectedTab by remember { mutableStateOf(0) }
 
     val tabs = listOf(
@@ -151,7 +146,6 @@ fun SettingsScreen(
 @Composable
 private fun AiModelsSettingsTab(viewModel: DictionaryViewModel) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
 
     val downloadedModels by viewModel.downloadedModels.collectAsState()
     val activeLocalModel by viewModel.activeLocalModel.collectAsState()
@@ -256,7 +250,7 @@ private fun AiModelsSettingsTab(viewModel: DictionaryViewModel) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text("Đang tải: ${state.modelId}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                    Text("${state.progress}%", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    Text("${state.progress.toInt()}%", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                 }
                                 LinearProgressIndicator(
                                     progress = { state.progress / 100f },
@@ -271,14 +265,14 @@ private fun AiModelsSettingsTab(viewModel: DictionaryViewModel) {
                                     Text("Hủy tải", fontSize = 11.sp)
                                 }
                             }
-                            is DownloadState.Success -> {
+                            is DownloadState.Completed -> {
                                 Text("✅ Đã tải thành công: ${state.fileName}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                                 TextButton(onClick = { viewModel.resetModelDownloadState() }, modifier = Modifier.align(Alignment.End)) {
                                     Text("Đóng")
                                 }
                             }
                             is DownloadState.Failed -> {
-                                Text("❌ Lỗi tải: ${state.errorMessage}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                                Text("❌ Lỗi tải: ${state.error}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
                                 TextButton(onClick = { viewModel.resetModelDownloadState() }, modifier = Modifier.align(Alignment.End)) {
                                     Text("Đóng")
                                 }
@@ -341,7 +335,6 @@ private fun AiModelsSettingsTab(viewModel: DictionaryViewModel) {
                 ModelItemCard(
                     model = model,
                     isActive = model.isActiveTier1,
-                    isPreset = !model.isCustom,
                     onActivate = { viewModel.setActiveLocalModel(model.fileName) },
                     onDeactivate = { viewModel.setActiveLocalModel(null) },
                     onSwitchTier = { viewModel.setCustomModelTier(model.fileName, 2) },
@@ -390,7 +383,7 @@ private fun AiModelsSettingsTab(viewModel: DictionaryViewModel) {
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("📥 Nhập mô hình cho Tầng 1 từ bộ nhớ (.gguf)")
             }
@@ -450,7 +443,6 @@ private fun AiModelsSettingsTab(viewModel: DictionaryViewModel) {
                 ModelItemCard(
                     model = model,
                     isActive = model.isActiveTier2,
-                    isPreset = !model.isCustom,
                     onActivate = { viewModel.setActiveTier2Model(model.fileName) },
                     onDeactivate = { viewModel.setActiveTier2Model(null) },
                     onSwitchTier = { viewModel.setCustomModelTier(model.fileName, 1) },
@@ -503,7 +495,7 @@ private fun AiModelsSettingsTab(viewModel: DictionaryViewModel) {
                     },
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("📥 Nhập Tầng 2 từ máy", fontSize = 11.sp)
                 }
@@ -591,11 +583,9 @@ private fun AiModelsSettingsTab(viewModel: DictionaryViewModel) {
  */
 @Composable
 private fun CloudAiSettingsTab(viewModel: DictionaryViewModel) {
-    val context = LocalContext.current
     val providers by viewModel.aiProviders.collectAsState()
-    val activeProvider by viewModel.activeProvider.collectAsState()
-    val connectionStatuses by viewModel.connectionStatuses.collectAsState()
-    val isTestingConnection by viewModel.isTestingConnection.collectAsState()
+    var testingProviderId by remember { mutableStateOf<String?>(null) }
+    var testResults by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
     LazyColumn(
         modifier = Modifier
@@ -624,12 +614,23 @@ private fun CloudAiSettingsTab(viewModel: DictionaryViewModel) {
             ProviderConfigCard(
                 provider = provider,
                 isDefault = provider.isDefault,
-                connectionStatus = connectionStatuses[provider.id] ?: ProviderConnectionStatus.Untested,
-                isTesting = isTestingConnection,
-                onSaveKey = { newKey -> viewModel.updateProviderApiKey(provider.id, newKey) },
+                testResultText = testResults[provider.id],
+                isTesting = testingProviderId == provider.id,
+                onSaveKey = { newKey -> viewModel.saveProvider(provider.copy(apiKey = newKey)) },
                 onSetDefault = { viewModel.setDefaultProvider(provider.id) },
-                onToggleEnabled = { enabled -> viewModel.toggleProviderEnabled(provider.id, enabled) },
-                onTestConnection = { viewModel.testProviderConnection(provider.id) }
+                onToggleEnabled = { enabled -> viewModel.saveProvider(provider.copy(isEnabled = enabled)) },
+                onTestConnection = {
+                    testingProviderId = provider.id
+                    viewModel.testProviderConnection(provider) { res ->
+                        testingProviderId = null
+                        val msg = if (res.isSuccess) {
+                            "🟢 Kết nối tốt (${res.latencyMs}ms)"
+                        } else {
+                            "🔴 Lỗi: ${res.errorMessage ?: "Không kết nối được"}"
+                        }
+                        testResults = testResults + (provider.id to msg)
+                    }
+                }
             )
         }
     }
@@ -831,12 +832,12 @@ private fun LanAndStorageSettingsTab(viewModel: DictionaryViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Dung Lượng Bộ Nhớ (<500MB)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("${storageReport.totalSizeMb} MB", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("Dung Lượng Bộ Nhớ (<${storageReport.maxBudgetMb.toInt()}MB)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("${storageReport.totalUsedMb} MB", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
 
                 LinearProgressIndicator(
-                    progress = { (storageReport.totalSizeMb / 500.0).toFloat().coerceIn(0f, 1f) },
+                    progress = { (storageReport.totalUsedMb / storageReport.maxBudgetMb).toFloat().coerceIn(0f, 1f) },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -844,9 +845,9 @@ private fun LanAndStorageSettingsTab(viewModel: DictionaryViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("• Cơ sở dữ liệu: ${storageReport.databaseSizeMb} MB", style = MaterialTheme.typography.labelSmall)
-                    Text("• Mô hình AI: ${storageReport.modelsSizeMb} MB", style = MaterialTheme.typography.labelSmall)
-                    Text("• Bộ đệm: ${storageReport.cacheSizeMb} MB", style = MaterialTheme.typography.labelSmall)
+                    Text("• Cơ sở dữ liệu: ${storageReport.databaseMb} MB", style = MaterialTheme.typography.labelSmall)
+                    Text("• Mô hình AI: ${storageReport.modelsMb} MB", style = MaterialTheme.typography.labelSmall)
+                    Text("• Bộ đệm: ${storageReport.cacheMb} MB", style = MaterialTheme.typography.labelSmall)
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -895,7 +896,6 @@ private fun SectionHeader(icon: androidx.compose.ui.graphics.vector.ImageVector,
 private fun ModelItemCard(
     model: LocalModelInfo,
     isActive: Boolean,
-    isPreset: Boolean,
     onActivate: () -> Unit,
     onDeactivate: () -> Unit,
     onSwitchTier: () -> Unit,
@@ -1054,7 +1054,7 @@ private fun PresetDownloadCard(
 private fun ProviderConfigCard(
     provider: AiProviderConfig,
     isDefault: Boolean,
-    connectionStatus: ProviderConnectionStatus,
+    testResultText: String?,
     isTesting: Boolean,
     onSaveKey: (String) -> Unit,
     onSetDefault: () -> Unit,
@@ -1084,7 +1084,7 @@ private fun ProviderConfigCard(
                     Spacer(modifier = Modifier.width(4.dp))
                     Column {
                         Text(provider.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                        Text(provider.model, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                        Text(provider.modelName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                     }
                 }
 
@@ -1119,27 +1119,18 @@ private fun ProviderConfigCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                when (connectionStatus) {
-                    is ProviderConnectionStatus.Success -> {
-                        Text("🟢 Kết nối tốt (${connectionStatus.latencyMs}ms)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    }
-                    is ProviderConnectionStatus.Failed -> {
-                        Text("🔴 Lỗi: ${connectionStatus.message}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                    }
-                    is ProviderConnectionStatus.Testing -> {
-                        Text("🟡 Đang kiểm tra...", style = MaterialTheme.typography.labelSmall)
-                    }
-                    else -> {
-                        Text("⚪ Chưa kiểm tra", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                    }
-                }
+                Text(
+                    text = if (isTesting) "🟡 Đang kiểm tra..." else (testResultText ?: "⚪ Chưa kiểm tra"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
 
                 OutlinedButton(
                     onClick = onTestConnection,
                     enabled = !isTesting && apiKeyInput.isNotBlank(),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
                 ) {
-                    Text("Kiểm tra kết nối", fontSize = 11.sp)
+                    Text(if (isTesting) "Đang kiểm tra..." else "Kiểm tra kết nối", fontSize = 11.sp)
                 }
             }
         }

@@ -568,8 +568,8 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
 
     fun refreshDynamicSuggestions() {
         val pool = suggestionPools.toMutableList()
-        val recent = _searchHistory.value.firstOrNull()
-        if (recent != null && recent.isNotBlank()) {
+        val recent = searchHistory.value.firstOrNull()?.query
+        if (!recent.isNullOrBlank()) {
             pool.add(0, "Dịch câu & phân tích ngữ pháp liên quan đến: $recent")
         }
         _dynamicSuggestions.value = pool.shuffled().take(4)

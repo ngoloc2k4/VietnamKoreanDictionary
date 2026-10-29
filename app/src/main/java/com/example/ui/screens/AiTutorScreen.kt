@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -196,7 +197,7 @@ fun AiTutorScreen(
                         val activeModelDescription = when (selectedTier) {
                             AiTutorExecutionTier.TIER1_LOCAL -> "Mô hình T1: ${activeLocalModel?.name ?: "Heuristic 0MB (Mặc định)"}"
                             AiTutorExecutionTier.TIER2_OFFLINE -> "Mô hình T2: ${activeTier2Model?.name ?: "Qwen2.5-0.5B Ngoại tuyến"}"
-                            AiTutorExecutionTier.TIER2_CLOUD -> "Nhà cung cấp: ${defaultProvider?.name ?: "Groq / Gemini"} (${defaultProvider?.model ?: ""})"
+                            AiTutorExecutionTier.TIER2_CLOUD -> "Nhà cung cấp: ${defaultProvider?.name ?: "Groq / Gemini"} (${defaultProvider?.modelName ?: ""})"
                         }
                         Text(
                             text = activeModelDescription,
@@ -532,7 +533,7 @@ fun AiTutorScreen(
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Column {
                                         Text(provider.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                        Text(provider.model, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                        Text(provider.modelName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                                     }
                                 }
                             }
