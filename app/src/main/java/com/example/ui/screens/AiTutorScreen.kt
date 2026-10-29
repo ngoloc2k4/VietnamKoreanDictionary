@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ai.gateway.UnifiedAiResponse
 import com.example.ai.tier1.Tier2ExecutionMode
 import com.example.ui.components.RichMarkdownText
+import com.example.ui.viewmodel.AiTutorExecutionTier
 import com.example.ui.viewmodel.ChatMessageUi
 import com.example.ui.viewmodel.DictionaryViewModel
 import kotlinx.coroutines.launch
@@ -42,6 +43,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun AiTutorScreen(
     viewModel: DictionaryViewModel,
+    onNavigateToSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -54,10 +56,14 @@ fun AiTutorScreen(
     val activeLocalModel by viewModel.activeLocalModel.collectAsState()
     val activeTier2Model by viewModel.activeTier2Model.collectAsState()
     val tier2Mode by viewModel.tier2ExecutionMode.collectAsState()
+    val selectedTier by viewModel.selectedAiTutorTier.collectAsState()
+    val downloadedModels by viewModel.downloadedModels.collectAsState()
+    val dynamicSuggestions by viewModel.dynamicSuggestions.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showStorageSheet by remember { mutableStateOf(false) }
+    var showModelPickerDialog by remember { mutableStateOf(false) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
     var selectedDebugResponse by remember { mutableStateOf<UnifiedAiResponse?>(null) }
 
@@ -105,25 +111,22 @@ fun AiTutorScreen(
                     }
                 }
 
-                val tier2Label = if (tier2Mode == Tier2ExecutionMode.OFFLINE_LOCAL) {
-                    "Offline (${activeTier2Model?.name ?: "Chưa chọn"})"
-                } else {
-                    "Cloud (${defaultProvider?.name ?: "Chưa chọn"})"
+                val tierLabel = when (selectedTier) {
+                    AiTutorExecutionTier.TIER1_LOCAL -> "⚡ Tầng 1 Local (${activeLocalModel?.name ?: "Heuristic 0MB"})"
+                    AiTutorExecutionTier.TIER2_OFFLINE -> "📱 Tầng 2 Ngoại tuyến (${activeTier2Model?.name ?: "Qwen2.5-0.5B"})"
+                    AiTutorExecutionTier.TIER2_CLOUD -> "☁️ Tầng 2 Đám mây (${defaultProvider?.name ?: "Cloud Gateway"})"
                 }
 
                 Text(
-                    text = "Tầng 1: ${activeLocalModel?.name ?: "Heuristic"} • Tầng 2: $tier2Label",
+                    text = tierLabel,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { showStorageSheet = true }) {
-                    Icon(imageVector = Icons.Default.Memory, contentDescription = "Quản lý Model AI Nhúng (Tầng 1)", tint = MaterialTheme.colorScheme.primary)
-                }
-                IconButton(onClick = { showSettingsSheet = true }) {
-                    Icon(imageVector = Icons.Outlined.Tune, contentDescription = "Cấu hình AI Provider (Tầng 2)", tint = MaterialTheme.colorScheme.primary)
+                IconButton(onClick = onNavigateToSettings) {
+                    Icon(imageVector = Icons.Outlined.Settings, contentDescription = "Cài đặt & Quản lý Mô hình", tint = MaterialTheme.colorScheme.primary)
                 }
                 IconButton(onClick = { showClearHistoryDialog = true }) {
                     Icon(imageVector = Icons.Default.DeleteOutline, contentDescription = "Xóa lịch sử trò chuyện", tint = MaterialTheme.colorScheme.error)
@@ -133,40 +136,83 @@ fun AiTutorScreen(
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-        // Quick Execution Mode Switcher Chips (Offline on-device vs Cloud Multi-AI)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // In-Screen Tier & Active Model Selector Bar
+        Surface(
+            tonalElevation = 1.dp,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            FilterChip(
-                selected = tier2Mode == Tier2ExecutionMode.OFFLINE_LOCAL,
-                onClick = { viewModel.setTier2ExecutionMode(Tier2ExecutionMode.OFFLINE_LOCAL) },
-                label = {
-                    val label = if (activeTier2Model != null) {
-                        "📱 Ngoại tuyến (${activeTier2Model?.name})"
-                    } else {
-                        "📱 Ngoại tuyến (On-device)"
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Tier Switcher Chips (Tier 1 vs Tier 2 Offline vs Tier 2 Cloud)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilterChip(
+                        selected = selectedTier == AiTutorExecutionTier.TIER1_LOCAL,
+                        onClick = { viewModel.setAiTutorExecutionTier(AiTutorExecutionTier.TIER1_LOCAL) },
+                        label = { Text("⚡ Tầng 1 Local", fontSize = 11.sp) },
+                        leadingIcon = if (selectedTier == AiTutorExecutionTier.TIER1_LOCAL) {
+                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        } else null,
+                        modifier = Modifier.weight(1f)
+                    )
+                    FilterChip(
+                        selected = selectedTier == AiTutorExecutionTier.TIER2_OFFLINE,
+                        onClick = { viewModel.setAiTutorExecutionTier(AiTutorExecutionTier.TIER2_OFFLINE) },
+                        label = { Text("📱 T2 Ngoại tuyến", fontSize = 11.sp) },
+                        leadingIcon = if (selectedTier == AiTutorExecutionTier.TIER2_OFFLINE) {
+                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        } else null,
+                        modifier = Modifier.weight(1f)
+                    )
+                    FilterChip(
+                        selected = selectedTier == AiTutorExecutionTier.TIER2_CLOUD,
+                        onClick = { viewModel.setAiTutorExecutionTier(AiTutorExecutionTier.TIER2_CLOUD) },
+                        label = { Text("☁️ T2 Đám mây", fontSize = 11.sp) },
+                        leadingIcon = if (selectedTier == AiTutorExecutionTier.TIER2_CLOUD) {
+                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        } else null,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Model Selector for Active Tier
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { showModelPickerDialog = true }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val activeModelDescription = when (selectedTier) {
+                            AiTutorExecutionTier.TIER1_LOCAL -> "Mô hình T1: ${activeLocalModel?.name ?: "Heuristic 0MB (Mặc định)"}"
+                            AiTutorExecutionTier.TIER2_OFFLINE -> "Mô hình T2: ${activeTier2Model?.name ?: "Qwen2.5-0.5B Ngoại tuyến"}"
+                            AiTutorExecutionTier.TIER2_CLOUD -> "Nhà cung cấp: ${defaultProvider?.name ?: "Groq / Gemini"} (${defaultProvider?.model ?: ""})"
+                        }
+                        Text(
+                            text = activeModelDescription,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Đổi", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                        }
                     }
-                    Text(label, style = MaterialTheme.typography.labelMedium)
-                },
-                leadingIcon = if (tier2Mode == Tier2ExecutionMode.OFFLINE_LOCAL) {
-                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                } else null
-            )
-            FilterChip(
-                selected = tier2Mode == Tier2ExecutionMode.ONLINE_CLOUD,
-                onClick = { viewModel.setTier2ExecutionMode(Tier2ExecutionMode.ONLINE_CLOUD) },
-                label = {
-                    val label = if (defaultProvider != null) "☁️ Đám mây (${defaultProvider.name})" else "☁️ Đám mây (Cloud)"
-                    Text(label, style = MaterialTheme.typography.labelMedium)
-                },
-                leadingIcon = if (tier2Mode == Tier2ExecutionMode.ONLINE_CLOUD) {
-                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                } else null
-            )
+                }
+            }
         }
 
         // Conversation Status Bar & Clear History Action
@@ -244,21 +290,36 @@ fun AiTutorScreen(
             }
         }
 
-        // Quick Suggestion Prompts
+        // Dynamic Suggestion Prompts with Shuffle Button
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            val suggestions = listOf(
-                "Phân biệt -는데 và -지만",
-                "Phân tích Hán tự từ 'Học sinh'",
-                "Ngữ pháp kính ngữ -(으)시-",
-                "Dịch câu: 한국어를 배우는 것이 재미있어요"
-            )
-            suggestions.forEach { prompt ->
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { viewModel.refreshDynamicSuggestions() }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "🎲 Đổi gợi ý",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+
+            dynamicSuggestions.forEach { prompt ->
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -333,6 +394,170 @@ fun AiTutorScreen(
         StorageManagerSheet(
             viewModel = viewModel,
             onDismiss = { showStorageSheet = false }
+        )
+    }
+
+    // Interactive In-Screen Model Picker Dialog
+    if (showModelPickerDialog) {
+        AlertDialog(
+            onDismissRequest = { showModelPickerDialog = false },
+            title = {
+                Text(
+                    text = when (selectedTier) {
+                        AiTutorExecutionTier.TIER1_LOCAL -> "Chọn Mô hình Tầng 1 (Local)"
+                        AiTutorExecutionTier.TIER2_OFFLINE -> "Chọn Mô hình Tầng 2 (Ngoại tuyến)"
+                        AiTutorExecutionTier.TIER2_CLOUD -> "Chọn Nhà cung cấp Cloud (Tầng 2)"
+                    },
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    when (selectedTier) {
+                        AiTutorExecutionTier.TIER1_LOCAL -> {
+                            // Heuristic option
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.setActiveLocalModel(null)
+                                        showModelPickerDialog = false
+                                    }
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = activeLocalModel == null,
+                                    onClick = {
+                                        viewModel.setActiveLocalModel(null)
+                                        showModelPickerDialog = false
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text("Heuristic Siêu Nhẹ (0MB)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    Text("Tối ưu RAM, tra cứu trực tiếp kho 78.000 từ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                }
+                            }
+
+                            val t1Models = downloadedModels.filter { it.tier == 1 }
+                            t1Models.forEach { model ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.setActiveLocalModel(model.fileName)
+                                            showModelPickerDialog = false
+                                        }
+                                        .padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = activeLocalModel?.fileName == model.fileName,
+                                        onClick = {
+                                            viewModel.setActiveLocalModel(model.fileName)
+                                            showModelPickerDialog = false
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(model.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                        Text("${model.sizeMb} MB • ${if (model.isCustom) "Tự nạp" else "Preset"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                    }
+                                }
+                            }
+                        }
+
+                        AiTutorExecutionTier.TIER2_OFFLINE -> {
+                            val t2Models = downloadedModels.filter { it.tier == 2 }
+                            if (t2Models.isEmpty()) {
+                                Text(
+                                    text = "Chưa có mô hình Tầng 2 nào được tải. Bạn có thể vào Cài đặt để tải Qwen2.5-0.5B (~390MB) hoặc nạp tệp .gguf từ máy.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                t2Models.forEach { model ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                viewModel.setActiveTier2Model(model.fileName)
+                                                showModelPickerDialog = false
+                                            }
+                                            .padding(vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        RadioButton(
+                                            selected = activeTier2Model?.fileName == model.fileName,
+                                            onClick = {
+                                                viewModel.setActiveTier2Model(model.fileName)
+                                                showModelPickerDialog = false
+                                            }
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(model.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                            Text("${model.sizeMb} MB • ${if (model.isCustom) "Tự nạp" else "Preset"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        AiTutorExecutionTier.TIER2_CLOUD -> {
+                            providers.forEach { provider ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.setDefaultProvider(provider.id)
+                                            showModelPickerDialog = false
+                                        }
+                                        .padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = provider.isDefault,
+                                        onClick = {
+                                            viewModel.setDefaultProvider(provider.id)
+                                            showModelPickerDialog = false
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(provider.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                        Text(provider.model, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    OutlinedButton(
+                        onClick = {
+                            showModelPickerDialog = false
+                            onNavigateToSettings()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Outlined.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("⚙️ Mở Cài đặt Quản lý Mô hình đầy đủ", fontSize = 11.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showModelPickerDialog = false }) {
+                    Text("Đóng")
+                }
+            }
         )
     }
 

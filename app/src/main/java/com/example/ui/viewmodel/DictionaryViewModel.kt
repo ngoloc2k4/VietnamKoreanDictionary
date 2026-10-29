@@ -80,6 +80,12 @@ enum class FlashcardFilter(val label: String, val group: FlashcardFilterGroup = 
     THEME_EMOTION("❤️ Cảm xúc", FlashcardFilterGroup.THEME)
 }
 
+enum class AiTutorExecutionTier(val label: String, val description: String) {
+    TIER1_LOCAL("⚡ Tầng 1 Local", "Siêu nhẹ on-device / RAG / Heuristic (0MB - 140MB)"),
+    TIER2_OFFLINE("📱 Tầng 2 Ngoại tuyến", "Mô hình LLM 0.5B-0.8B chạy offline trên thiết bị"),
+    TIER2_CLOUD("☁️ Tầng 2 Đám mây", "Mô hình lớn đa nhà cung cấp (Groq, Gemini, Claude, OpenAI)")
+}
+
 data class ChatMessageUi(
     val role: String, // "user", "assistant", "middleman"
     val content: String,
@@ -334,56 +340,76 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                     UnifiedAiMessage(it.role, it.content)
                 }
 
-                // TIER 1: Embedded AI Middleman processing (uses active on-device model if downloaded, else heuristic)
-                val decision = LocalAiMiddleman.processQuery(
-                    userQuery = trimmed,
-                    localWords = localCandidates,
-                    chatHistory = history,
-                    activeModelName = _activeLocalModel.value?.name
-                )
+                val currentTier = _selectedAiTutorTier.value
 
-                if (decision.canHandleOffline && decision.offlineAnswer != null) {
-                    // Handled 100% locally: Zero tokens, instant response!
-                    val offlineMsg = ChatMessageUi(
-                        role = "assistant",
-                        content = decision.offlineAnswer,
-                        isOfflineHandled = true
-                    )
-                    _aiChatMessages.value = _aiChatMessages.value + offlineMsg
-                } else {
-                    val request = decision.optimizedRequest ?: UnifiedAiRequest(
-                        messages = listOf(UnifiedAiMessage("user", trimmed))
-                    )
+                val response: UnifiedAiResponse = when (currentTier) {
+                    AiTutorExecutionTier.TIER1_LOCAL -> {
+                        // TIER 1: Process with LocalAiMiddleman and instant Local RAG
+                        val decision = LocalAiMiddleman.processQuery(
+                            userQuery = trimmed,
+                            localWords = localCandidates,
+                            chatHistory = history,
+                            activeModelName = _activeLocalModel.value?.name
+                        )
+                        if (decision.canHandleOffline && decision.offlineAnswer != null) {
+                            UnifiedAiResponse(
+                                isSuccess = true,
+                                content = decision.offlineAnswer,
+                                providerName = "Tầng 1 Local (${_activeLocalModel.value?.name ?: "Heuristic"})",
+                                modelName = _activeLocalModel.value?.name ?: "Heuristic RAG"
+                            )
+                        } else {
+                            // Synthesize answer through Tier 1 local model
+                            LocalTier2InferenceEngine.executeOfflineInference(
+                                query = trimmed,
+                                localWords = localCandidates,
+                                modelFileName = _activeLocalModel.value?.fileName ?: "smollm2-135m-instruct-q4_k_m.gguf",
+                                modelSizeMb = _activeLocalModel.value?.sizeMb ?: 100.0
+                            )
+                        }
+                    }
 
-                    // TIER 2: Hybrid execution (Offline Heavy Model 0.5B-0.8B or Online Cloud Gateway)
-                    val isTier2Offline = _tier2ExecutionMode.value == Tier2ExecutionMode.OFFLINE_LOCAL
-                    val availableOfflineModel = _activeTier2Model.value ?: _activeLocalModel.value ?: _downloadedModels.value.firstOrNull()
-
-                    val response = if (isTier2Offline) {
-                        if (availableOfflineModel != null) {
-                            LocalTier2InferenceEngine.executeOfflineInference(request, availableOfflineModel, localCandidates)
+                    AiTutorExecutionTier.TIER2_OFFLINE -> {
+                        // TIER 2 OFFLINE: Run LocalTier2InferenceEngine directly with selected Tier 2 model without single-word truncation
+                        val offlineModel = _activeTier2Model.value ?: _downloadedModels.value.firstOrNull { it.tier == 2 } ?: _activeLocalModel.value
+                        val request = UnifiedAiRequest(
+                            messages = listOf(UnifiedAiMessage("user", trimmed))
+                        )
+                        if (offlineModel != null) {
+                            LocalTier2InferenceEngine.executeOfflineInference(request, offlineModel, localCandidates)
                         } else {
                             LocalTier2InferenceEngine.executeOfflineInference(
                                 query = trimmed,
                                 localWords = localCandidates,
-                                modelFileName = "vietkor-nlp-ondevice.gguf",
-                                modelSizeMb = 135.0
+                                modelFileName = "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+                                modelSizeMb = 390.0
                             )
                         }
-                    } else {
-                        // Call online Cloud Multi-Provider Gateway
+                    }
+
+                    AiTutorExecutionTier.TIER2_CLOUD -> {
+                        // TIER 2 CLOUD: Call Cloud Multi-Provider Gateway with automatic offline fallback
+                        val decision = LocalAiMiddleman.processQuery(
+                            userQuery = trimmed,
+                            localWords = localCandidates,
+                            chatHistory = history,
+                            activeModelName = _activeLocalModel.value?.name
+                        )
+                        val request = decision.optimizedRequest ?: UnifiedAiRequest(
+                            messages = listOf(UnifiedAiMessage("user", trimmed))
+                        )
                         val onlineRes = aiGateway.executeWithFallback(request)
                         if (!onlineRes.isSuccess) {
-                            // Auto-fallback to offline on-device model when cloud has no key or network fails
-                            if (availableOfflineModel != null) {
-                                val fallbackRes = LocalTier2InferenceEngine.executeOfflineInference(request, availableOfflineModel, localCandidates)
+                            val offlineModel = _activeTier2Model.value ?: _downloadedModels.value.firstOrNull { it.tier == 2 } ?: _activeLocalModel.value
+                            if (offlineModel != null) {
+                                val fallbackRes = LocalTier2InferenceEngine.executeOfflineInference(request, offlineModel, localCandidates)
                                 fallbackRes.copy(content = "⚠️ *Không có kết nối đám mây, tự động chuyển sang mô hình ngoại tuyến Tầng 2:*\n\n" + fallbackRes.content)
                             } else {
                                 val localFallback = LocalTier2InferenceEngine.executeOfflineInference(
                                     query = trimmed,
                                     localWords = localCandidates,
-                                    modelFileName = "vietkor-nlp-ondevice.gguf",
-                                    modelSizeMb = 135.0
+                                    modelFileName = "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+                                    modelSizeMb = 390.0
                                 )
                                 localFallback.copy(content = "⚠️ *Chưa cấu hình API Key đám mây, tự động giải đáp bằng mô hình ngoại tuyến:*\n\n" + localFallback.content)
                             }
@@ -391,24 +417,24 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                             onlineRes
                         }
                     }
-
-                    val replyMsg = if (response.isSuccess) {
-                        ChatMessageUi(
-                            role = "assistant",
-                            content = response.content,
-                            isOfflineHandled = isTier2Offline || response.providerName.contains("Offline"),
-                            debugInfo = response
-                        )
-                    } else {
-                        ChatMessageUi(
-                            role = "assistant",
-                            content = "⚠️ ${response.errorMessage ?: "Không thể kết nối đến AI"}\n\n*Gợi ý:* Hãy vào **Cài đặt AI** để kiểm tra API Key hoặc chọn mô hình ngoại tuyến.",
-                            isOfflineHandled = false,
-                            debugInfo = response
-                        )
-                    }
-                    _aiChatMessages.value = _aiChatMessages.value + replyMsg
                 }
+
+                val replyMsg = if (response.isSuccess) {
+                    ChatMessageUi(
+                        role = "assistant",
+                        content = response.content,
+                        isOfflineHandled = currentTier != AiTutorExecutionTier.TIER2_CLOUD || response.providerName.contains("Offline") || response.providerName.contains("Tầng 1"),
+                        debugInfo = response
+                    )
+                } else {
+                    ChatMessageUi(
+                        role = "assistant",
+                        content = "⚠️ ${response.errorMessage ?: "Không thể kết nối đến AI"}\n\n*Gợi ý:* Hãy vào **Cài đặt AI** để kiểm tra API Key hoặc chọn mô hình ngoại tuyến.",
+                        isOfflineHandled = false,
+                        debugInfo = response
+                    )
+                }
+                _aiChatMessages.value = _aiChatMessages.value + replyMsg
             } catch (e: Exception) {
                 _aiChatMessages.value = _aiChatMessages.value + ChatMessageUi(
                     role = "assistant",
@@ -501,6 +527,54 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     private val _tier2ExecutionMode = MutableStateFlow(AiModelManager.getTier2ExecutionMode(application))
     val tier2ExecutionMode = _tier2ExecutionMode.asStateFlow()
 
+    private val _selectedAiTutorTier = MutableStateFlow(
+        if (_tier2ExecutionMode.value == Tier2ExecutionMode.OFFLINE_LOCAL) AiTutorExecutionTier.TIER2_OFFLINE
+        else AiTutorExecutionTier.TIER2_CLOUD
+    )
+    val selectedAiTutorTier = _selectedAiTutorTier.asStateFlow()
+
+    fun setAiTutorExecutionTier(tier: AiTutorExecutionTier) {
+        _selectedAiTutorTier.value = tier
+        when (tier) {
+            AiTutorExecutionTier.TIER1_LOCAL -> {
+                // Tier 1 focuses on local heuristic & lightweight RAG
+            }
+            AiTutorExecutionTier.TIER2_OFFLINE -> {
+                setTier2ExecutionMode(Tier2ExecutionMode.OFFLINE_LOCAL)
+            }
+            AiTutorExecutionTier.TIER2_CLOUD -> {
+                setTier2ExecutionMode(Tier2ExecutionMode.ONLINE_CLOUD)
+            }
+        }
+    }
+
+    private val suggestionPools = listOf(
+        "Dịch câu: học chào hỏi rồi học văn hoá",
+        "Phân biệt ngữ pháp -는데 và -지만",
+        "Phân tích chiết tự Hán-Hàn từ 'Học sinh' (학생)",
+        "Cách dùng cấu trúc -고 나서 và liên từ -고",
+        "Dịch câu: Hôm nay tôi muốn học tiếng Hàn để đi du học",
+        "Kính ngữ -(으)시- và các từ vựng kính ngữ đặc biệt",
+        "Hán tự chữ 'Văn hoá' (문화 - 文化) có ý nghĩa gì?",
+        "So sánh ngữ pháp -아/어서 và -(으)니까",
+        "Dịch câu: Ăn cơm xong rồi uống cà phê",
+        "Topik 2: Cách chia thì quá khứ và tương lai",
+        "Phân biệt tiểu từ chủ ngữ 이/가 và tiểu từ chủ đề 은/는",
+        "Hội thoại: Cách gọi món trong quán ăn Hàn Quốc"
+    )
+
+    private val _dynamicSuggestions = MutableStateFlow(suggestionPools.shuffled().take(4))
+    val dynamicSuggestions = _dynamicSuggestions.asStateFlow()
+
+    fun refreshDynamicSuggestions() {
+        val pool = suggestionPools.toMutableList()
+        val recent = _searchHistory.value.firstOrNull()
+        if (recent != null && recent.isNotBlank()) {
+            pool.add(0, "Dịch câu & phân tích ngữ pháp liên quan đến: $recent")
+        }
+        _dynamicSuggestions.value = pool.shuffled().take(4)
+    }
+
     val modelDownloadState: StateFlow<DownloadState> = AiModelManager.downloadState
 
     fun refreshDownloadedModels() {
@@ -557,6 +631,11 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
 
     fun deleteLocalModel(fileName: String) {
         AiModelManager.deleteModel(getApplication(), fileName)
+        refreshDownloadedModels()
+    }
+
+    fun setCustomModelTier(fileName: String, tier: Int) {
+        AiModelManager.setCustomModelTier(getApplication(), fileName, tier)
         refreshDownloadedModels()
     }
 

@@ -256,6 +256,70 @@ fun AiProviderSettingsSheet(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
+                        val customTier2Models = downloadedModels.filter { it.tier == 2 && it.isCustom }
+                        if (customTier2Models.isNotEmpty()) {
+                            Text(
+                                text = "Mô hình Tầng 2 đã nạp từ máy (${customTier2Models.size}):",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            customTier2Models.forEach { custom ->
+                                val isActive = custom.isActiveTier2
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(custom.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                        Text("${custom.fileName} • ${custom.sizeMb} MB", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            TextButton(
+                                                onClick = { viewModel.setCustomModelTier(custom.fileName, 1) },
+                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                            ) {
+                                                Icon(Icons.Default.SwapVert, contentDescription = null, modifier = Modifier.size(12.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Chuyển sang T1", fontSize = 10.sp)
+                                            }
+
+                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                if (!isActive) {
+                                                    OutlinedButton(
+                                                        onClick = { viewModel.setActiveTier2Model(custom.fileName) },
+                                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                                    ) {
+                                                        Text("Kích hoạt Tầng 2", fontSize = 11.sp)
+                                                    }
+                                                } else {
+                                                    Button(
+                                                        onClick = {},
+                                                        enabled = false,
+                                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                                    ) {
+                                                        Text("Đang dùng", fontSize = 11.sp)
+                                                    }
+                                                }
+                                                IconButton(
+                                                    onClick = { viewModel.deleteLocalModel(custom.fileName) },
+                                                    modifier = Modifier.size(28.dp)
+                                                ) {
+                                                    Icon(imageVector = Icons.Default.DeleteOutline, contentDescription = "Xóa", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        }
+
                         Text(
                             text = "Các mô hình lớn Tầng 2 đề xuất (Hugging Face Hub):",
                             style = MaterialTheme.typography.labelMedium,

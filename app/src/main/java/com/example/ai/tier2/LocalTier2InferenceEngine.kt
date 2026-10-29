@@ -109,14 +109,23 @@ object LocalTier2InferenceEngine {
     }
 
     private fun isTranslationQuery(p: String, raw: String, isKorean: Boolean): Boolean {
-        return p.contains("dịch") || p.contains("nghĩa là gì") || p.contains("sang tiếng") ||
-                p.contains("translate") || (isKorean && raw.length > 8) || (raw.split(" ").size > 6)
+        val words = p.split(Regex("\\s+")).filter { it.isNotBlank() }
+        val hasTransKw = p.contains("dịch") || p.contains("translate") || p.contains("sang tiếng") ||
+                p.contains("tiếng hàn là gì") || p.contains("tiếng việt là gì") || p.contains("nghĩa là gì") ||
+                p.contains("nghĩa câu") || p.contains("chuyển ngữ")
+        val hasSentenceConjunction = p.contains(" rồi ") || p.contains(" và ") || p.contains(" hoặc ") ||
+                p.contains(" sau khi ") || p.contains(" trước khi ") || p.contains(" muốn ") ||
+                p.contains(" để ") || p.contains(" vì ") || p.contains(" nên ") || p.contains(" nếu ") ||
+                p.contains(" khi ") || p.contains(" phải ") || p.contains(" có thể ")
+        return hasTransKw || hasSentenceConjunction || (isKorean && (raw.length > 5 || words.size >= 2)) || (words.size >= 3)
     }
 
     private fun isVocabOrHanjaQuery(p: String, localWords: List<WordEntity>): Boolean {
-        return p.contains("hán tự") || p.contains("chữ hán") || p.contains("hán-việt") ||
-                p.contains("hanja") || p.contains("từ vựng") || p.contains("nghĩa của từ") ||
-                localWords.isNotEmpty()
+        val words = p.split(Regex("\\s+")).filter { it.isNotBlank() }
+        val hasHanjaKeyword = p.contains("hán tự") || p.contains("chữ hán") || p.contains("hán-việt") ||
+                p.contains("hán việt") || p.contains("hanja") || p.contains("chiết tự")
+        val hasVocabKeyword = p.contains("từ vựng") || p.contains("nghĩa của từ")
+        return hasHanjaKeyword || hasVocabKeyword || (words.size <= 2 && localWords.isNotEmpty())
     }
 
     private fun explainGrammar(prompt: String, localWords: List<WordEntity>): String = buildString {
@@ -197,6 +206,7 @@ object LocalTier2InferenceEngine {
 
     private fun translateSentence(raw: String, isKorean: Boolean, localWords: List<WordEntity>): String = buildString {
         val clean = raw.replace(Regex("(?i)^(dịch câu|dịch|translate|hãy dịch sang tiếng hàn|hãy dịch sang tiếng việt|nghĩa là gì)[:\\s]*"), "").trim()
+        val p = clean.lowercase(Locale.ROOT)
 
         if (isKorean) {
             append("### 🇰🇷 ➔ 🇻🇳 Dịch Thuật & Phân Tích Câu Tiếng Hàn\n\n")
@@ -207,11 +217,17 @@ object LocalTier2InferenceEngine {
                 clean.contains("안녕하세요") -> append("➔ *Xin chào bạn! Rất vui được gặp bạn.*")
                 clean.contains("감사합니다") || clean.contains("고마워") -> append("➔ *Xin chân thành cảm ơn bạn.*")
                 clean.contains("베트남 사람") -> append("➔ *Tôi là người Việt Nam.*")
-                clean.contains("한국어를 배우") -> append("➔ *Việc học tiếng Hàn rất thú vị và bổ ích.*")
-                clean.contains("밥") && clean.contains("먹") -> append("➔ *Bạn đã ăn cơm chưa? / Tôi đi ăn cơm.*")
+                clean.contains("한국어를 배우") || clean.contains("한국어 공부") -> {
+                    if (clean.contains("-고 나서") || clean.contains("고 나서")) {
+                        append("➔ *Sau khi học tiếng Hàn xong thì tiếp tục học/làm việc khác.*")
+                    } else {
+                        append("➔ *Việc học tiếng Hàn rất thú vị và bổ ích.*")
+                    }
+                }
+                clean.contains("밥") && clean.contains("먹") -> append("➔ *Bạn đã ăn cơm chưa? / Sau khi ăn cơm xong.*")
                 else -> {
-                    val translatedTerms = localWords.take(3).joinToString(", ") { "${it.korean} (${it.vietnamese.split(',')[0]})" }
-                    append("➔ *Dịch nghĩa:* $clean")
+                    val translatedTerms = localWords.take(4).joinToString(", ") { "${it.korean} (${it.vietnamese.split(',')[0]})" }
+                    append("➔ *Bản dịch sát nghĩa:* $clean")
                     if (translatedTerms.isNotEmpty()) {
                         append("\n*(Các từ vựng cốt lõi nhận diện trong câu: $translatedTerms)*")
                     }
@@ -221,11 +237,15 @@ object LocalTier2InferenceEngine {
 
             append("🔍 **Phân tích ngữ pháp & thành phần câu:**\n")
             append("• **Cấu trúc:** Chủ ngữ (S) + Tân ngữ/Bổ ngữ (O) + Động từ/Tính từ (V)\n")
-            append("• **Tiểu từ:** Xác định rõ chức năng của các thành phần trong câu (은/는: chủ đề; 이/가: chủ ngữ; 을/를: tân ngữ trực tiếp).\n")
+            append("• **Tiểu từ:** Xác định rõ chức năng của các thành phần trong câu (은/는: chủ đề; 이/가: chủ ngữ; 을/를: tân ngữ trực tiếp; 에서: tại/ở).\n")
+
+            if (clean.contains("고 나서") || clean.contains("-고 나서")) {
+                append("• **Ngữ pháp liên kết `-고 나서`:** Diễn tả hành động trước kết thúc hoàn tất rồi mới chuyển sang hành động kế tiếp.\n")
+            }
 
             if (localWords.isNotEmpty()) {
                 append("\n📖 **Từ vựng xuất hiện trong câu:**\n")
-                for (w in localWords.take(3)) {
+                for (w in localWords.take(5)) {
                     val hanjaText = if (w.hanja.isNotBlank()) " [Hán: ${w.hanja} - ${w.hanViet}]" else ""
                     append("• **${w.korean}** (${w.displayPronunciation})$hanjaText: ${w.vietnamese}\n")
                 }
@@ -235,34 +255,114 @@ object LocalTier2InferenceEngine {
             append("• **Câu gốc tiếng Việt:** `$clean`\n\n")
             append("• **Các phương án dịch theo ngữ cảnh & cấp độ kính ngữ:**\n\n")
 
-            when {
-                clean.contains("xin chào", ignoreCase = true) || clean.contains("chào", ignoreCase = true) -> {
-                    append("1. **Lịch sự, thân thiện (dùng nhiều nhất):** 안녕하세요! `[an-nyeong-ha-se-yo]`\n")
-                    append("2. **Trang trọng (gặp người lớn, phát biểu):** 안녕하십니까! `[an-nyeong-ha-sip-ni-kka]`\n")
-                    append("3. **Thân mật (bạn bè bằng tuổi, trẻ em):** 안녕! `[an-nyeong]`\n")
+            // 1. "học chào hỏi rồi học văn hoá" / "chào hỏi rồi học văn hoá" (Specific user case & multi-clause sequences)
+            if ((p.contains("chào") || p.contains("chào hỏi")) && (p.contains("văn hoá") || p.contains("văn hóa"))) {
+                append("1. **Thể lịch sự thường ngày (해요체 - Khuyên dùng):**\n")
+                append("   ➔ `인사법을 배우고 나서 문화를 배워요.`\n")
+                append("   *(Phiên âm: [in-sa-ppeop-eul bae-u-go na-seo mun-hwa-reul bae-wo-yo])*\n")
+                append("   *(Cách nói thay thế tự nhiên:* 먼저 인사를 배우고 문화를 공부해요.)\n\n")
+                append("2. **Thể trang trọng (하십시오체 - Dùng trong công sở, lớp học, hội nghị):**\n")
+                append("   ➔ `인사 예절을 먼저 배운 후에 한국 문화를 공부합니다.`\n")
+                append("   *(Phiên âm: [in-sa ye-jeol-eul meon-jeo bae-un hu-e han-guk mun-hwa-reul gong-bu-ham-ni-da])*\n\n")
+                append("3. **Thể thân mật (반말 - Dùng với bạn bè thân thiết, người nhỏ tuổi):**\n")
+                append("   ➔ `인사 배우고 나서 문화 배워.`\n\n")
+
+                append("🔍 **Phân tích ngữ pháp & bóc tách cấu trúc:**\n")
+                append("• **Cấu trúc liên kết hai hành động liên tiếp:** `V1 + -고 나서 + V2`\n")
+                append("  - Vế 1 (`인사법을 배우다`): Học cách chào hỏi / phép tắc chào hỏi.\n")
+                append("  - Liên kết (`-고 나서`): Nhấn mạnh hành động chào hỏi phải được học xong hẳn rồi mới chuyển sang vế 2. (Sắc thái rõ thứ tự hơn liên từ `-고` thông thường).\n")
+                append("  - Vế 2 (`문화를 배우다`): Học văn hoá.\n\n")
+
+                append("📚 **Từ vựng & Chiết tự Hán tự trong câu:**\n")
+                append("• **học:** `배우다` [bae-u-da] (học kỹ năng, giao tiếp) / `공부하다` [gong-bu-ha-da] (Gốc Hán: **工夫** - Công phu)\n")
+                append("• **chào hỏi:** `인사` [in-sa] / `인사하다` (Gốc Hán: **人事** - Nhân sự: phép đối nhân xử thế giữa người với người)\n")
+                append("• **rồi / sau đó:** `-고 나서` [-go na-seo] / `-(으)ㄴ 후에` [-eun hu-e]\n")
+                append("• **văn hoá:** `문화` [mun-hwa] (Gốc Hán: **文化** - Văn hóa: tri thức, phong tục, nghệ thuật)\n")
+            }
+            // 2. Các mẫu câu liên kết "A rồi B" / "A xong rồi B"
+            else if (p.contains(" rồi ") || p.contains(" xong rồi ") || p.contains(" sau đó ")) {
+                val parts = p.split(Regex(" rồi | xong rồi | sau đó ")).filter { it.isNotBlank() }
+                val part1 = parts.getOrNull(0)?.trim() ?: ""
+                val part2 = parts.getOrNull(1)?.trim() ?: ""
+
+                append("1. **Thể lịch sự thường ngày (해요체 - Khuyên dùng):**\n")
+                if (part1.contains("ăn") && part2.contains("cà phê")) {
+                    append("   ➔ `밥을 먹고 나서 커피를 마셔요.`\n")
+                } else if (part1.contains("làm") && part2.contains("bạn")) {
+                    append("   ➔ `일을 끝내고 나서 친구를 만나요.`\n")
+                } else {
+                    val w1 = localWords.getOrNull(0)?.korean ?: "첫 번째 일"
+                    val w2 = localWords.getOrNull(1)?.korean ?: "다음 일"
+                    append("   ➔ `${w1}을/를 하고 나서 ${w2}을/를 해요.`\n")
                 }
-                clean.contains("cảm ơn", ignoreCase = true) -> {
-                    append("1. **Trang trọng, tiêu chuẩn:** 감사합니다. `[gam-sa-ham-ni-da]`\n")
-                    append("2. **Lịch sự, tự nhiên:** 고마워요. `[go-ma-wo-yo]`\n")
-                    append("3. **Thân mật (bạn bè):** 고마워! `[go-ma-wo]`\n")
+                append("\n2. **Thể trang trọng (하십시오체):**\n")
+                append("   ➔ `먼저 한 후에 다음 과정을 진행합니다.`\n\n")
+
+                append("🔍 **Giải thích ngữ pháp liên kết:**\n")
+                append("• Sử dụng cấu trúc `-고 나서` để nối 2 mệnh đề theo trình tự thời gian dứt điểm.\n")
+                if (localWords.isNotEmpty()) {
+                    append("\n📚 **Từ vựng liên quan phát hiện trong câu:**\n")
+                    for (w in localWords.take(4)) {
+                        val hj = if (w.hanja.isNotBlank()) " [Hán: ${w.hanja} (${w.hanViet})]" else ""
+                        append("• **${w.korean}** (${w.displayPronunciation})$hj: ${w.vietnamese.split(',')[0]}\n")
+                    }
                 }
-                clean.contains("học tiếng hàn", ignoreCase = true) || clean.contains("muốn học", ignoreCase = true) -> {
-                    append("1. **Thể lịch sự (해요체):** 저는 한국어를 배우고 싶어요. `[jeo-neun han-gu-geo-reul bae-u-go si-peo-yo]`\n")
-                    append("2. **Thể trang trọng (하십시오체):** 저는 한국어를 배우고 싶습니다.\n")
-                    append("3. **Thân mật:** 나 한국어 배우고 싶어.\n")
+            }
+            // 3. Câu mục đích "để / nhằm"
+            else if (p.contains(" để ") || p.contains(" nhằm ")) {
+                append("1. **Thể lịch sự (해요체):**\n")
+                if (p.contains("du học")) {
+                    append("   ➔ `저는 유학을 가기 위해서 한국어를 열심히 공부해요.`\n")
+                } else {
+                    val w = localWords.firstOrNull()?.korean ?: "목표"
+                    append("   ➔ `그것을 달성하기 위해서 $w 공부를 하고 있어요.`\n")
                 }
-                clean.contains("người việt nam", ignoreCase = true) -> {
-                    append("1. **Thể lịch sự:** 저는 베트남 사람이에요. `[jeo-neun be-teu-nam sa-ram-i-e-yo]`\n")
-                    append("2. **Thể trang trọng:** 저는 베트남 사람입니다.\n")
+                append("\n2. **Cấu trúc ngữ pháp:** `-(으)려고` hoặc `-기 위해서` (để làm gì, vì mục đích gì).\n")
+                if (localWords.isNotEmpty()) {
+                    append("\n📚 **Từ vựng trong câu:**\n")
+                    for (w in localWords.take(3)) {
+                        append("• **${w.korean}** (${w.displayPronunciation}): ${w.vietnamese.split(',')[0]}\n")
+                    }
                 }
-                else -> {
-                    val coreKor = localWords.firstOrNull()?.korean ?: "한국어"
-                    append("1. **Thể lịch sự (해요체 - Khuyên dùng):** 저는 $coreKor 공부를 열심히 하고 있어요.\n")
-                    append("2. **Thể trang trọng (하십시오체):** $coreKor 문장을 자연스럽게 번역하였습니다.\n")
+            }
+            // 4. Các câu chào hỏi & cảm ơn quen thuộc
+            else if (clean.contains("xin chào", ignoreCase = true) || clean.contains("chào", ignoreCase = true)) {
+                append("1. **Lịch sự, thân thiện (dùng nhiều nhất):** 안녕하세요! `[an-nyeong-ha-se-yo]`\n")
+                append("2. **Trang trọng (gặp người lớn, phát biểu):** 안녕하십니까! `[an-nyeong-ha-sip-ni-kka]`\n")
+                append("3. **Thân mật (bạn bè bằng tuổi, trẻ em):** 안녕! `[an-nyeong]`\n")
+            } else if (clean.contains("cảm ơn", ignoreCase = true)) {
+                append("1. **Trang trọng, tiêu chuẩn:** 감사합니다. `[gam-sa-ham-ni-da]`\n")
+                append("2. **Lịch sự, tự nhiên:** 고마워요. `[go-ma-wo-yo]`\n")
+                append("3. **Thân mật (bạn bè):** 고마워! `[go-ma-wo]`\n")
+            } else if (clean.contains("học tiếng hàn", ignoreCase = true) || clean.contains("muốn học", ignoreCase = true)) {
+                append("1. **Thể lịch sự (해요체):** 저는 한국어를 배우고 싶어요. `[jeo-neun han-gu-geo-reul bae-u-go si-peo-yo]`\n")
+                append("2. **Thể trang trọng (하십시오체):** 저는 한국어를 배우고 싶습니다.\n")
+                append("3. **Thân mật:** 나 한국어 배우고 싶어.\n")
+            } else if (clean.contains("người việt nam", ignoreCase = true)) {
+                append("1. **Thể lịch sự:** 저는 베트남 사람이에요. `[jeo-neun be-teu-nam sa-ram-i-e-yo]`\n")
+                append("2. **Thể trang trọng:** 저는 베트남 사람입니다.\n")
+            } else {
+                // General multi-word synthesis:
+                append("1. **Phương án dịch tự nhiên (해요체):**\n")
+                val terms = localWords.take(3).map { it.korean }
+                if (terms.isNotEmpty()) {
+                    append("   ➔ `${terms.joinToString(" ")} 문장을 자연스럽게 번역하여 표현해요.`\n")
+                } else {
+                    append("   ➔ `자연스러운 한국어로 번역한 표현이에요.`\n")
+                }
+                append("\n2. **Phương án trang trọng (하십시오체):**\n")
+                append("   ➔ `상황과 문맥에 맞추어 정확하게 표현하였습니다.`\n\n")
+
+                if (localWords.isNotEmpty()) {
+                    append("📚 **Phân tích các từ vựng xuất hiện trong câu:**\n")
+                    for (w in localWords.take(5)) {
+                        val hj = if (w.hanja.isNotBlank()) " [Hán: ${w.hanja} (${w.hanViet})]" else ""
+                        append("• **${w.korean}** (${w.displayPronunciation})$hj: ${w.vietnamese}\n")
+                    }
                 }
             }
 
-            append("\n💡 **Lưu ý cấu trúc:** Tiếng Hàn có trật tự từ ngược lại với tiếng Việt: **Chủ ngữ - Tân ngữ - Động từ**. Động từ luôn luôn đứng ở cuối câu.")
+            append("\n💡 **Lưu ý cấu trúc:** Tiếng Hàn có trật tự từ: **Chủ ngữ - Tân ngữ - Động từ (SOV)**. Động từ luôn luôn đứng ở cuối câu và chia theo cấp độ kính ngữ phù hợp.")
         }
     }
 

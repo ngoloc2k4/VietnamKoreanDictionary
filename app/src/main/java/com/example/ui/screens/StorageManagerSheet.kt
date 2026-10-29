@@ -447,6 +447,103 @@ fun StorageManagerSheet(
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
 
+                    // Custom / Imported Models Section (Never hidden)
+                    val customModels = downloadedModels.filter { it.isCustom }
+                    if (customModels.isNotEmpty()) {
+                        Text(
+                            text = "Mô hình đã nạp từ bộ nhớ máy (${customModels.size}):",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        customModels.forEach { custom ->
+                            val isActive = if (custom.tier == 1) custom.isActiveTier1 else custom.isActiveTier2
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(custom.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = if (custom.tier == 1) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.tertiaryContainer
+                                                ) {
+                                                    Text("Tầng ${custom.tier}", fontSize = 9.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
+                                                }
+                                            }
+                                            Text(
+                                                text = "${custom.fileName} • ${custom.sizeMb} MB",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(
+                                            onClick = { viewModel.setCustomModelTier(custom.fileName, if (custom.tier == 1) 2 else 1) },
+                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                        ) {
+                                            Icon(Icons.Default.SwapVert, contentDescription = null, modifier = Modifier.size(12.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(if (custom.tier == 1) "Chuyển sang T2" else "Chuyển sang T1", fontSize = 10.sp)
+                                        }
+
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            if (isActive) {
+                                                Button(
+                                                    onClick = {
+                                                        if (custom.tier == 1) viewModel.setActiveLocalModel(null)
+                                                        else viewModel.setActiveTier2Model(null)
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text("✓ Đang dùng", fontSize = 11.sp)
+                                                }
+                                            } else {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        if (custom.tier == 1) viewModel.setActiveLocalModel(custom.fileName)
+                                                        else viewModel.setActiveTier2Model(custom.fileName)
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text("Kích hoạt", fontSize = 11.sp)
+                                                }
+                                            }
+
+                                            IconButton(
+                                                onClick = { viewModel.deleteLocalModel(custom.fileName) },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.DeleteOutline,
+                                                    contentDescription = "Xóa",
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    }
+
                     Text(
                         text = "Danh sách Model Presets (Hugging Face Hub):",
                         style = MaterialTheme.typography.labelMedium,

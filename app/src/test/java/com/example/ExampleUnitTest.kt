@@ -467,4 +467,39 @@ class ExampleUnitTest {
         val hasValidConfigured = configuredProviders.filter { it.isEnabled }.any { it.apiKey.isNotBlank() }
         assertTrue("Configured provider with API key must satisfy cloud requirements", hasValidConfigured)
     }
+
+    @Test
+    fun `multi-word sentence translation does not truncate to single word and explains compound grammar`() {
+        // Query: "học chào hỏi rồi học văn hoá"
+        val query = "học chào hỏi rồi học văn hoá"
+        val candidateWords = KoreanVietnameseSearchMatcher.searchAndRank(words, "học").map { it.word }
+
+        val response = LocalTier2InferenceEngine.executeOfflineInference(
+            query = query,
+            localWords = candidateWords,
+            modelFileName = "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+            modelSizeMb = 390.0
+        )
+
+        assertTrue("Inference must succeed", response.isSuccess)
+        val content = response.content
+
+        // Verify it translates the full sentence, not just the word 'học'
+        assertTrue("Must contain Korean translation for greeting and culture", content.contains("인사") && content.contains("문화"))
+        assertTrue("Must explain the sequential conjunction -고 나서", content.contains("-고 나서"))
+        assertTrue("Must contain vocabulary breakdown for chào hỏi", content.contains("chào hỏi") || content.contains("인사"))
+        assertTrue("Must contain vocabulary breakdown for văn hoá", content.contains("văn hoá") || content.contains("문화"))
+        assertFalse("Must NOT truncate to a single-word dictionary lookup of only 'học'", content.startsWith("### 🔍 Phân Tích Chuyên Sâu Từ Vựng & Chiết Tự Hán-Hàn"))
+    }
+
+    @Test
+    fun `settings navigation tab and ai tutor execution tiers exist and are well defined`() {
+        val settingsTab = com.example.NavigationTab.SETTINGS
+        assertEquals("Cài đặt", settingsTab.title)
+        assertEquals("nav_settings_tab", settingsTab.testTag)
+
+        assertEquals("⚡ Tầng 1 Local", com.example.ui.viewmodel.AiTutorExecutionTier.TIER1_LOCAL.label)
+        assertEquals("📱 Tầng 2 Ngoại tuyến", com.example.ui.viewmodel.AiTutorExecutionTier.TIER2_OFFLINE.label)
+        assertEquals("☁️ Tầng 2 Đám mây", com.example.ui.viewmodel.AiTutorExecutionTier.TIER2_CLOUD.label)
+    }
 }

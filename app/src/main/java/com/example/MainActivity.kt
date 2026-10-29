@@ -31,6 +31,7 @@ import com.example.ui.screens.DictionaryScreen
 import com.example.ui.screens.FlashcardScreen
 import com.example.ui.screens.HanjaHanVietScreen
 import com.example.ui.screens.LibraryScreen
+import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.DictionaryViewModel
 
@@ -69,6 +70,12 @@ enum class NavigationTab(
         Icons.Filled.Bookmark,
         Icons.Outlined.BookmarkBorder,
         "nav_library_tab"
+    ),
+    SETTINGS(
+        "Cài đặt",
+        Icons.Filled.Settings,
+        Icons.Outlined.Settings,
+        "nav_settings_tab"
     )
 }
 
@@ -134,6 +141,7 @@ class MainActivity : ComponentActivity() {
                         )
                         NavigationTab.AI_TUTOR -> AiTutorScreen(
                             viewModel = viewModel,
+                            onNavigateToSettings = { currentTab = NavigationTab.SETTINGS },
                             modifier = Modifier.padding(innerPadding)
                         )
                         NavigationTab.FLASHCARD -> FlashcardScreen(
@@ -141,6 +149,10 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding)
                         )
                         NavigationTab.LIBRARY -> LibraryScreen(
+                            viewModel = viewModel,
+                            modifier = Modifier.padding(innerPadding)
+                        )
+                        NavigationTab.SETTINGS -> SettingsScreen(
                             viewModel = viewModel,
                             modifier = Modifier.padding(innerPadding)
                         )

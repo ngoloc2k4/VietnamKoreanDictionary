@@ -176,7 +176,8 @@ object AiModelManager {
             val isCustom = preset == null
             val displayName = preset?.name ?: file.name
             val sizeMb = (file.length().toDouble() / (1024 * 1024) * 10).toInt() / 10.0
-            val tier = preset?.tier ?: if (sizeMb > 200.0) 2 else 1
+            val storedTier = getPrefs(context).getInt("custom_tier_${file.name}", -1)
+            val tier = preset?.tier ?: if (storedTier != -1) storedTier else (if (sizeMb > 200.0) 2 else 1)
             val tag = preset?.tag ?: if (file.name.contains("embed", ignoreCase = true)) "EMBEDDING" else "CUSTOM"
 
             LocalModelInfo(
@@ -192,6 +193,15 @@ object AiModelManager {
                 tier = tier
             )
         }.sortedWith(compareByDescending<LocalModelInfo> { it.isActiveTier1 || it.isActiveTier2 }.thenBy { it.tier })
+    }
+
+    fun getCustomModelTier(context: Context, fileName: String, defaultTier: Int = 1): Int {
+        return getPrefs(context).getInt("custom_tier_$fileName", defaultTier)
+    }
+
+    fun setCustomModelTier(context: Context, fileName: String, tier: Int) {
+        getPrefs(context).edit().putInt("custom_tier_$fileName", tier).apply()
+        AppLogManager.log("AiModelManager", "Đã cập nhật tầng cho mô hình $fileName -> Tầng $tier")
     }
 
     // Tier 1 Active Model
@@ -418,7 +428,8 @@ object AiModelManager {
             } ?: return@withContext Result.failure(IOException("Không thể đọc tệp từ URI đã chọn"))
 
             val sizeMb = (targetFile.length().toDouble() / (1024 * 1024) * 10).toInt() / 10.0
-            val determinedTier = if (tier == 2 || sizeMb > 200.0) 2 else 1
+            val determinedTier = if (tier == 2) 2 else if (tier == 1) 1 else (if (sizeMb > 200.0) 2 else 1)
+            setCustomModelTier(context, targetFileName, determinedTier)
 
             if (determinedTier == 1) {
                 setActiveTier1Model(context, targetFileName)
@@ -457,6 +468,7 @@ object AiModelManager {
             setActiveTier2Model(context, null)
         }
         val deleted = file.delete()
+        getPrefs(context).edit().remove("custom_tier_$fileName").apply()
         AppLogManager.log("AiModelManager", "Xóa mô hình $fileName: $deleted")
         return deleted
     }

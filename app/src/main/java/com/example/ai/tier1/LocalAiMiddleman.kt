@@ -43,13 +43,15 @@ object LocalAiMiddleman {
             return UserIntent.GRAMMAR_EXPLANATION
         }
 
-        // 3. Translation of long text
-        if (q.contains("dịch") || query.length > 50 || query.split(" ").size > 8) {
+        // 3. Translation of sentence or multi-word text
+        if (q.contains("dịch") || query.length > 35 || query.split(" ").size >= 3 ||
+            q.contains(" rồi ") || q.contains(" và ") || q.contains(" để ") || q.contains(" muốn ") ||
+            q.contains(" sau khi ") || q.contains(" trước khi ") || q.contains(" vì ") || q.contains(" nên ")) {
             return UserIntent.TRANSLATION
         }
 
-        // 4. Exact word lookup that exists in local DB
-        if (localCandidates.isNotEmpty() && query.length <= 25 && query.split(" ").size <= 3) {
+        // 4. Exact word lookup that exists in local DB (1-2 words only)
+        if (localCandidates.isNotEmpty() && query.length <= 20 && query.split(Regex("\\s+")).filter { it.isNotBlank() }.size <= 2) {
             return UserIntent.OFFLINE_DICTIONARY_LOOKUP
         }
 
