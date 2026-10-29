@@ -80,9 +80,22 @@ jobs:
           echo "Keystore Certificate Details:"
           keytool -list -v -keystore release-keystore.jks -storepass "$STORE_PASS" -alias "$ALIAS" | grep -E "(Alias name|Valid from|SHA256:)" || true
 
+      # 1.5 Cache Robolectric Jars to prevent transient Maven download failures
+      - name: Cache Robolectric Jars
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: ${{ runner.os }}-robolectric-cache
+          restore-keys: |
+            ${{ runner.os }}-robolectric-
+
       # 2. Run Unit Tests BEFORE building APK
       - name: Run Unit Tests
-        run: ./gradlew testDebugUnitTest --stacktrace
+        run: |
+          ./gradlew testDebugUnitTest --stacktrace || {
+            echo "Retrying testDebugUnitTest once in case of transient network failure..."
+            ./gradlew testDebugUnitTest --stacktrace
+          }
 
       - name: Upload Test Results
         if: always()
